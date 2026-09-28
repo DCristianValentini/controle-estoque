@@ -44,8 +44,12 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   error?: string
 }
 
+// bg-white + text-slate-900 explicitos: sem isso, o navegador usa a cor
+// nativa do form control, que em modo escuro do SO/navegador pode deixar o
+// texto digitado com a mesma cor do fundo (invisivel, mas presente) -- ver
+// nota sobre color-scheme em index.css.
 const CAMPO_CLASSES =
-  'w-full rounded-lg border px-3 py-2.5 text-[clamp(0.88rem,0.84rem+0.15vw,1rem)] outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100'
+  'w-full rounded-lg border bg-white px-3 py-2.5 text-[clamp(0.88rem,0.84rem+0.15vw,1rem)] text-slate-900 placeholder:text-slate-400 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100'
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   { label, error, className = '', id, name, ...props },

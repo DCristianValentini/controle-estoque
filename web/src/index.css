@@ -1,7 +1,12 @@
 @import "tailwindcss";
 
 :root {
-  color-scheme: light dark;
+  /* so light: a UI ainda nao tem paleta escura desenhada. "light dark" aqui
+     deixava o navegador aplicar estilo nativo escuro nos campos (fundo/texto)
+     quando o SO/navegador forca modo escuro, e em alguns casos isso deixava
+     o texto digitado com a mesma cor do fundo do campo -- parecia "nao da
+     pra digitar" quando na verdade o texto entrava, só que invisivel. */
+  color-scheme: light;
 }
 
 html, body, #root {
