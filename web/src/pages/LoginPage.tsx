@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { supabase } from '../lib/supabase'
 import { Button, Card, Input, PasswordInput } from '../components/ui'
+import logoUrl from '../assets/branding/logo.webp'
 
 type Modo = 'login' | 'cadastro'
 
@@ -60,7 +61,7 @@ export function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex justify-center">
-          <img src="/logo.webp" alt="Logo" className="h-20 w-auto object-contain" />
+          <img src={logoUrl} alt="Logo" className="h-20 w-auto object-contain" />
         </div>
         <Card className="p-6">
           <h1 className="mb-4 text-center text-lg font-semibold text-slate-800">

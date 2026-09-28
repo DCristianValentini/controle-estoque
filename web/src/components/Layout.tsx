@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { useAuth } from '../lib/auth'
+import logoUrl from '../assets/branding/logo.webp'
 
 export type View = 'catalogo' | 'carrinho' | 'produtos' | 'usuarios' | 'empresas' | 'relatorio'
 
@@ -52,7 +53,7 @@ export function Layout({ view, onNavigate, children }: LayoutProps) {
         }`}
       >
         <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4">
-          <img src="/logo.webp" alt="" className="h-8 w-8 rounded object-contain" />
+          <img src={logoUrl} alt="" className="h-8 w-8 rounded object-contain" />
           <span className="min-w-0 truncate text-[clamp(0.95rem,0.9rem+0.2vw,1.1rem)] font-semibold text-slate-800">
             Controle de Estoque
           </span>

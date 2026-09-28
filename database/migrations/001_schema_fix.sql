@@ -25,6 +25,7 @@ BEGIN;
 -- -----------------------------------------------------------------------------
 ALTER TABLE empresa ADD CONSTRAINT empresa_pkey PRIMARY KEY (id);
 ALTER TABLE empresa ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (START WITH 3);
+ALTER TABLE empresa ADD COLUMN ativo BOOLEAN NOT NULL DEFAULT true;  -- inativar (nao apagar) bloqueia o acesso, ver funcoes abaixo
 
 -- -----------------------------------------------------------------------------
 -- 2. PRODUTOS — vira PK de verdade, continua sequencial a partir do maior id
@@ -93,14 +94,22 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   SELECT COALESCE((SELECT super_admin FROM profiles WHERE id = auth.uid()), false);
 $$;
 
+-- Ambas so enxergam empresa ATIVA: inativar uma empresa (super_admin) corta
+-- na hora o acesso de quem tem vinculo com ela (produtos/carrinho/vendas
+-- ficam bloqueados em cascata, ja que todas as outras policies dependem
+-- dessas duas funcoes).
 CREATE OR REPLACE FUNCTION papel_na_empresa(p_empresa_id INT) RETURNS TEXT
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
-  SELECT papel FROM usuario_empresas WHERE profile_id = auth.uid() AND empresa_id = p_empresa_id;
+  SELECT ue.papel FROM usuario_empresas ue
+    JOIN empresa e ON e.id = ue.empresa_id
+    WHERE ue.profile_id = auth.uid() AND ue.empresa_id = p_empresa_id AND e.ativo = true;
 $$;
 
 CREATE OR REPLACE FUNCTION minhas_empresas() RETURNS SETOF INT
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
-  SELECT empresa_id FROM usuario_empresas WHERE profile_id = auth.uid();
+  SELECT ue.empresa_id FROM usuario_empresas ue
+    JOIN empresa e ON e.id = ue.empresa_id
+    WHERE ue.profile_id = auth.uid() AND e.ativo = true;
 $$;
 
 -- Valida (fora do super_admin) que quem cria um convite so oferece acesso a
