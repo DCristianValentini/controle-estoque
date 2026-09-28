@@ -65,7 +65,7 @@ export function ProdutoDetalheModal({ produto, onClose, onAdicionado }: Props) {
                 key={src}
                 onClick={() => setIndiceImagem(i)}
                 className={`h-14 w-14 shrink-0 overflow-hidden rounded-lg border-2 ${
-                  i === indiceImagem ? 'border-sky-500' : 'border-transparent'
+                  i === indiceImagem ? 'border-red-500' : 'border-transparent'
                 }`}
               >
                 <img src={src} alt="" className="h-full w-full object-cover" />
@@ -112,7 +112,7 @@ export function ProdutoDetalheModal({ produto, onClose, onAdicionado }: Props) {
               step={1}
               value={desconto}
               onChange={(e) => setDesconto(Number(e.target.value))}
-              className="w-full accent-sky-600"
+              className="w-full accent-red-600"
             />
             <p className="mt-1 text-xs text-slate-400">Máximo permitido: {produto.descontoMax}%</p>
           </div>
@@ -120,7 +120,7 @@ export function ProdutoDetalheModal({ produto, onClose, onAdicionado }: Props) {
 
         <div className="rounded-lg bg-slate-50 p-3 text-right">
           <span className="text-sm text-slate-500">Total: </span>
-          <span className="text-lg font-semibold text-sky-700">{formatarMoeda(valorTotal)}</span>
+          <span className="text-lg font-semibold text-red-700">{formatarMoeda(valorTotal)}</span>
         </div>
 
         {erro && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{erro}</p>}

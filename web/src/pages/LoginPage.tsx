@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { supabase } from '../lib/supabase'
+import { loginParaEmail } from '../lib/loginEmail'
 import { Button, Card, Input, PasswordInput } from '../components/ui'
 import logoUrl from '../assets/branding/logo.webp'
 
@@ -8,7 +9,7 @@ type Modo = 'login' | 'cadastro'
 
 export function LoginPage() {
   const [modo, setModo] = useState<Modo>('login')
-  const [email, setEmail] = useState('')
+  const [usuario, setUsuario] = useState('')
   const [senha, setSenha] = useState('')
   const [confirmarSenha, setConfirmarSenha] = useState('')
   const [carregando, setCarregando] = useState(false)
@@ -25,7 +26,10 @@ export function LoginPage() {
     e.preventDefault()
     setErro(null)
     setCarregando(true)
-    const { error } = await supabase.auth.signInWithPassword({ email, password: senha })
+    const { error } = await supabase.auth.signInWithPassword({
+      email: loginParaEmail(usuario),
+      password: senha,
+    })
     setCarregando(false)
     if (error) setErro(traduzirErro(error.message))
   }
@@ -43,7 +47,10 @@ export function LoginPage() {
       return
     }
     setCarregando(true)
-    const { error, data } = await supabase.auth.signUp({ email, password: senha })
+    const { error, data } = await supabase.auth.signUp({
+      email: loginParaEmail(usuario),
+      password: senha,
+    })
     setCarregando(false)
     if (error) {
       setErro(traduzirErro(error.message))
@@ -58,7 +65,7 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#EB3334] to-[#7a2b2a] p-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex justify-center">
           <img src={logoUrl} alt="Logo" className="h-20 w-auto object-contain" />
@@ -74,12 +81,12 @@ export function LoginPage() {
           {modo === 'login' ? (
             <form className="space-y-4" onSubmit={entrar}>
               <Input
-                label="E-mail"
-                type="email"
+                label="Usuário"
+                type="text"
                 required
                 autoComplete="username"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                value={usuario}
+                onChange={(e) => setUsuario(e.target.value)}
               />
               <PasswordInput
                 label="Senha"
@@ -95,12 +102,12 @@ export function LoginPage() {
           ) : (
             <form className="space-y-4" onSubmit={cadastrar}>
               <Input
-                label="E-mail"
-                type="email"
+                label="Usuário"
+                type="text"
                 required
                 autoComplete="username"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                value={usuario}
+                onChange={(e) => setUsuario(e.target.value)}
               />
               <PasswordInput
                 label="Senha"
@@ -117,7 +124,7 @@ export function LoginPage() {
                 onChange={(e) => setConfirmarSenha(e.target.value)}
               />
               <p className="text-xs text-slate-500">
-                Isso só libera acesso se um administrador já tiver te convidado com este e-mail.
+                Isso só libera acesso se um administrador já tiver te convidado com este nome de usuário.
               </p>
               <Button type="submit" full disabled={carregando}>
                 {carregando ? 'Criando…' : 'Criar conta'}
@@ -127,7 +134,7 @@ export function LoginPage() {
 
           <button
             type="button"
-            className="mt-4 w-full text-center text-sm text-sky-600 hover:underline"
+            className="mt-4 w-full text-center text-sm text-red-600 hover:underline"
             onClick={() => trocarModo(modo === 'login' ? 'cadastro' : 'login')}
           >
             {modo === 'login' ? 'Aceitar convite / criar conta' : 'Já tenho conta — entrar'}

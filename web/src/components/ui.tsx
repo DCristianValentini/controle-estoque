@@ -19,7 +19,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
-  primary: 'bg-sky-600 hover:bg-sky-700 text-white disabled:bg-sky-300',
+  primary: 'bg-red-600 hover:bg-red-700 text-white disabled:bg-red-300',
   secondary: 'bg-slate-100 hover:bg-slate-200 text-slate-800 disabled:text-slate-400',
   danger: 'bg-red-600 hover:bg-red-700 text-white disabled:bg-red-300',
   ghost: 'bg-transparent hover:bg-slate-100 text-slate-700',
@@ -49,7 +49,7 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 // texto digitado com a mesma cor do fundo (invisivel, mas presente) -- ver
 // nota sobre color-scheme em index.css.
 const CAMPO_CLASSES =
-  'w-full rounded-lg border bg-white px-3 py-2.5 text-[clamp(0.88rem,0.84rem+0.15vw,1rem)] text-slate-900 placeholder:text-slate-400 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100'
+  'w-full rounded-lg border bg-white px-3 py-2.5 text-[clamp(0.88rem,0.84rem+0.15vw,1rem)] text-slate-900 placeholder:text-slate-400 outline-none transition-colors focus:border-red-500 focus:ring-2 focus:ring-red-100'
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   { label, error, className = '', id, name, ...props },
@@ -254,7 +254,7 @@ const BADGE_TONES: Record<BadgeTone, string> = {
   green: 'bg-green-100 text-green-700',
   red: 'bg-red-100 text-red-700',
   amber: 'bg-amber-100 text-amber-700',
-  sky: 'bg-sky-100 text-sky-700',
+  sky: 'bg-red-100 text-red-700',
 }
 
 export function Badge({ children, tone = 'slate' }: { children: ReactNode; tone?: BadgeTone }) {

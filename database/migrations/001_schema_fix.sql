@@ -23,8 +23,25 @@ BEGIN;
 -- -----------------------------------------------------------------------------
 -- 1. EMPRESA — vira PK de verdade (so tinha 2 linhas, sem colisao aqui)
 -- -----------------------------------------------------------------------------
-ALTER TABLE empresa ADD CONSTRAINT empresa_pkey PRIMARY KEY (id);
-ALTER TABLE empresa ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (START WITH 3);
+-- Defensivo: em varios projetos Supabase o editor de tabelas ja cria "id"
+-- como PK + identity por padrao (foi o caso aqui — descoberto so na hora de
+-- rodar). Os blocos abaixo pulam o que ja existir em vez de falhar.
+DO $$ BEGIN
+  ALTER TABLE empresa ADD CONSTRAINT empresa_pkey PRIMARY KEY (id);
+EXCEPTION WHEN invalid_table_definition THEN
+  RAISE NOTICE 'empresa: ja tinha PK, ok';
+END $$;
+DO $$ BEGIN
+  ALTER TABLE empresa ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (START WITH 3);
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'empresa.id: ja e identity (ou ja tem default), ok (%: %)', SQLSTATE, SQLERRM;
+END $$;
+-- Resincroniza a sequencia MESMO se a identity ja existia de antes: quando o
+-- cliente manda um "id" explicito no INSERT (era exatamente o bug), a
+-- sequencia da identity NAO avanca sozinha — sem isso o proximo INSERT sem
+-- id explicito podia sortear um numero baixo ja usado, reabrindo o mesmo bug.
+SELECT setval(pg_get_serial_sequence('empresa', 'id'),
+              GREATEST((SELECT COALESCE(MAX(id), 0) FROM empresa), 2), true);
 ALTER TABLE empresa ADD COLUMN ativo BOOLEAN NOT NULL DEFAULT true;  -- inativar (nao apagar) bloqueia o acesso, ver funcoes abaixo
 
 -- -----------------------------------------------------------------------------
@@ -33,8 +50,21 @@ ALTER TABLE empresa ADD COLUMN ativo BOOLEAN NOT NULL DEFAULT true;  -- inativar
 --    dados legitimos da empresa 2, so a empresa 1 e que foi perdida (sem
 --    backup disponivel para recuperar).
 -- -----------------------------------------------------------------------------
-ALTER TABLE produtos ADD CONSTRAINT produtos_pkey PRIMARY KEY (id);
-ALTER TABLE produtos ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (START WITH 285);
+DO $$ BEGIN
+  ALTER TABLE produtos ADD CONSTRAINT produtos_pkey PRIMARY KEY (id);
+EXCEPTION WHEN invalid_table_definition THEN
+  RAISE NOTICE 'produtos: ja tinha PK, ok';
+END $$;
+DO $$ BEGIN
+  ALTER TABLE produtos ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (START WITH 285);
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'produtos.id: ja e identity (ou ja tem default), ok (%: %)', SQLSTATE, SQLERRM;
+END $$;
+-- Mesmo motivo do resync de empresa acima: garante que o proximo produto
+-- criado nunca saia com um id ja usado, independente do estado anterior da
+-- sequencia.
+SELECT setval(pg_get_serial_sequence('produtos', 'id'),
+              GREATEST((SELECT COALESCE(MAX(id), 0) FROM produtos), 284), true);
 
 -- -----------------------------------------------------------------------------
 -- 3. USUARIOS antigo -> Supabase Auth + profiles + usuario_empresas
@@ -63,6 +93,7 @@ ALTER TABLE produtos ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (START WIT
 
 CREATE TABLE profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  login TEXT NOT NULL UNIQUE,   -- nome de usuario (o que a pessoa digita pra entrar, sem @)
   nome TEXT NOT NULL,
   super_admin BOOLEAN NOT NULL DEFAULT false,   -- enxerga/administra TODAS as empresas
   ativo BOOLEAN NOT NULL DEFAULT true,
@@ -78,7 +109,8 @@ CREATE TABLE usuario_empresas (
 
 CREATE TABLE convites (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email TEXT NOT NULL,
+  login TEXT NOT NULL,   -- nome de usuario escolhido pelo admin (a pessoa convidada precisa digitar EXATAMENTE isso no cadastro)
+  email TEXT NOT NULL,   -- e-mail sintetico ja calculado no cliente a partir do login (ex.: mario@controle-estoque.local) -- so existe pra bater com o auth.users, ninguem digita
   nome TEXT NOT NULL,
   empresas JSONB NOT NULL,   -- [{"empresa_id":1,"papel":"admin"}, {"empresa_id":2,"papel":"vendedor"}]
   usado BOOLEAN NOT NULL DEFAULT false,
@@ -146,7 +178,7 @@ BEGIN
     ORDER BY criado_em DESC LIMIT 1;
 
   IF v_convite.id IS NOT NULL THEN
-    INSERT INTO profiles (id, nome, super_admin) VALUES (NEW.id, v_convite.nome, false);
+    INSERT INTO profiles (id, login, nome, super_admin) VALUES (NEW.id, v_convite.login, v_convite.nome, false);
     FOR r IN SELECT * FROM jsonb_to_recordset(v_convite.empresas) AS x(empresa_id INT, papel TEXT) LOOP
       INSERT INTO usuario_empresas (profile_id, empresa_id, papel) VALUES (NEW.id, r.empresa_id, r.papel);
     END LOOP;

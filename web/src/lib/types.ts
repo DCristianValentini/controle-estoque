@@ -17,6 +17,7 @@ export interface Empresa {
 
 export interface Profile {
   id: string
+  login: string
   nome: string
   super_admin: boolean
   ativo: boolean
@@ -61,6 +62,7 @@ export interface VendaEfetivada {
 
 export interface Convite {
   id: string
+  login: string
   email: string
   nome: string
   empresas: { empresa_id: number; papel: Papel }[]

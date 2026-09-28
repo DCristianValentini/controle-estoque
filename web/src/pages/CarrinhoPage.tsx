@@ -103,7 +103,7 @@ export function CarrinhoPage() {
   if (carregando) {
     return (
       <div className="flex justify-center py-12">
-        <Spinner className="h-6 w-6 text-sky-600" />
+        <Spinner className="h-6 w-6 text-red-600" />
       </div>
     )
   }

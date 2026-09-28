@@ -75,7 +75,7 @@ export function CatalogoPage() {
 
       {carregando ? (
         <div className="flex justify-center py-12">
-          <Spinner className="h-6 w-6 text-sky-600" />
+          <Spinner className="h-6 w-6 text-red-600" />
         </div>
       ) : filtrados.length === 0 ? (
         <p className="py-12 text-center text-sm text-slate-500">Nenhum produto encontrado.</p>
@@ -93,7 +93,7 @@ export function CatalogoPage() {
                 </div>
                 <p className="min-w-0 truncate text-sm font-medium text-slate-800">{p.nome}</p>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="min-w-0 truncate text-sm font-semibold text-sky-700">{formatarMoeda(p.valor)}</span>
+                  <span className="min-w-0 truncate text-sm font-semibold text-red-700">{formatarMoeda(p.valor)}</span>
                   <Badge tone={p.quantidade > 0 ? 'green' : 'red'}>{p.quantidade > 0 ? `${p.quantidade} un.` : 'sem estoque'}</Badge>
                 </div>
               </button>

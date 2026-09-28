@@ -51,7 +51,7 @@ export function EmpresasPage() {
 
       {carregando ? (
         <div className="flex justify-center py-12">
-          <Spinner className="h-6 w-6 text-sky-600" />
+          <Spinner className="h-6 w-6 text-red-600" />
         </div>
       ) : (
         <div className="space-y-2">

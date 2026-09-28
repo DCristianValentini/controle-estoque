@@ -126,7 +126,7 @@ export function ProdutoFormModal({ produto, onClose, onSalvo }: Props) {
               list="categorias-produto"
               value={categoria}
               onChange={(e) => setCategoria(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-[clamp(0.88rem,0.84rem+0.15vw,1rem)] outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-[clamp(0.88rem,0.84rem+0.15vw,1rem)] outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100"
             />
             <datalist id="categorias-produto">
               {categorias.map((c) => (
@@ -199,9 +199,9 @@ export function ProdutoFormModal({ produto, onClose, onSalvo }: Props) {
                 </button>
               </div>
             ))}
-            <label className="flex h-20 w-20 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-slate-300 text-xs text-slate-500 hover:border-sky-400 hover:text-sky-600">
+            <label className="flex h-20 w-20 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-slate-300 text-xs text-slate-500 hover:border-red-400 hover:text-red-600">
               {enviandoImagem ? (
-                <Spinner className="h-4 w-4 text-sky-600" />
+                <Spinner className="h-4 w-4 text-red-600" />
               ) : (
                 <>
                   <span aria-hidden>📷</span>
@@ -213,7 +213,7 @@ export function ProdutoFormModal({ produto, onClose, onSalvo }: Props) {
             <button
               type="button"
               onClick={() => setMostrarOrfas(true)}
-              className="flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-slate-300 text-xs text-slate-500 hover:border-sky-400 hover:text-sky-600"
+              className="flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-slate-300 text-xs text-slate-500 hover:border-red-400 hover:text-red-600"
             >
               <span aria-hidden>🗂️</span>
               <span>Já existente</span>
@@ -250,7 +250,7 @@ function ImagensOrfasModal({ onClose, onEscolher }: { onClose: () => void; onEsc
       {erro && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{erro}</p>}
       {!imagens ? (
         <div className="flex justify-center py-8">
-          <Spinner className="h-6 w-6 text-sky-600" />
+          <Spinner className="h-6 w-6 text-red-600" />
         </div>
       ) : imagens.length === 0 ? (
         <p className="py-8 text-center text-sm text-slate-500">Nenhuma imagem disponível (todas já estão em uso).</p>
@@ -260,7 +260,7 @@ function ImagensOrfasModal({ onClose, onEscolher }: { onClose: () => void; onEsc
             <button
               key={img.caminho}
               onClick={() => onEscolher(img.url)}
-              className="aspect-square overflow-hidden rounded-lg border border-slate-200 hover:border-sky-400"
+              className="aspect-square overflow-hidden rounded-lg border border-slate-200 hover:border-red-400"
             >
               <img src={img.url} alt="" className="h-full w-full object-cover" />
             </button>

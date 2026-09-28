@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import { loginParaEmail, normalizarLogin } from '../lib/loginEmail'
 import type { Empresa, Papel, Profile } from '../lib/types'
 import { Badge, Button, Card, Input, Modal, Select, Spinner } from '../components/ui'
 
@@ -94,7 +95,7 @@ export function UsuariosPage() {
 
       {carregando ? (
         <div className="flex justify-center py-12">
-          <Spinner className="h-6 w-6 text-sky-600" />
+          <Spinner className="h-6 w-6 text-red-600" />
         </div>
       ) : (
         <div className="space-y-2">
@@ -129,7 +130,7 @@ export function UsuariosPage() {
           onClose={() => setMostrarConvite(false)}
           onCriado={() => {
             setMostrarConvite(false)
-            setMensagem('Convite criado. Peça para a pessoa se cadastrar com este e-mail em "Aceitar convite / criar conta".')
+            setMensagem('Convite criado. Peça para a pessoa se cadastrar com este nome de usuário em "Aceitar convite / criar conta".')
           }}
         />
       )}
@@ -151,7 +152,7 @@ interface ConviteModalProps {
 }
 
 function ConviteModal({ empresaAtivaId, isSuperAdmin, todasEmpresas, onClose, onCriado }: ConviteModalProps) {
-  const [email, setEmail] = useState('')
+  const [login, setLogin] = useState('')
   const [nome, setNome] = useState('')
   const [acessos, setAcessos] = useState<AcessoConvite[]>([{ empresa_id: empresaAtivaId, papel: 'vendedor' }])
   const [salvando, setSalvando] = useState(false)
@@ -174,8 +175,8 @@ function ConviteModal({ empresaAtivaId, isSuperAdmin, todasEmpresas, onClose, on
   }
 
   async function criar() {
-    if (!email.trim() || !nome.trim()) {
-      setErro('Preencha nome e e-mail.')
+    if (!normalizarLogin(login) || !nome.trim()) {
+      setErro('Preencha nome e usuário.')
       return
     }
     if (acessos.length === 0) {
@@ -185,7 +186,8 @@ function ConviteModal({ empresaAtivaId, isSuperAdmin, todasEmpresas, onClose, on
     setSalvando(true)
     setErro(null)
     const { error } = await supabase.from('convites').insert({
-      email: email.trim().toLowerCase(),
+      login: normalizarLogin(login),
+      email: loginParaEmail(login),
       nome: nome.trim(),
       empresas: acessos,
     })
@@ -216,7 +218,7 @@ function ConviteModal({ empresaAtivaId, isSuperAdmin, todasEmpresas, onClose, on
       <div className="space-y-4">
         {erro && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{erro}</p>}
         <Input label="Nome" value={nome} onChange={(e) => setNome(e.target.value)} />
-        <Input label="E-mail" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <Input label="Nome de usuário" value={login} onChange={(e) => setLogin(e.target.value)} />
 
         <div>
           <span className="mb-2 block text-sm font-medium text-slate-700">Acesso</span>
@@ -249,7 +251,7 @@ function ConviteModal({ empresaAtivaId, isSuperAdmin, todasEmpresas, onClose, on
             ))}
           </div>
           {isSuperAdmin && (
-            <button type="button" onClick={adicionarAcesso} className="mt-2 text-sm text-sky-600 hover:underline">
+            <button type="button" onClick={adicionarAcesso} className="mt-2 text-sm text-red-600 hover:underline">
               + adicionar outra empresa
             </button>
           )}

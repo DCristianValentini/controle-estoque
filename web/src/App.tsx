@@ -19,7 +19,7 @@ function AppShell() {
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50">
-        <Spinner className="h-8 w-8 text-sky-600" />
+        <Spinner className="h-8 w-8 text-red-600" />
       </div>
     )
   }

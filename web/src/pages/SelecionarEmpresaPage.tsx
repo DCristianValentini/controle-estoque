@@ -33,7 +33,7 @@ export function SelecionarEmpresaPage() {
         </div>
 
         {isSuperAdmin && (
-          <button onClick={entrarModoGerenciar} className="mt-6 w-full text-center text-sm text-sky-600 hover:underline">
+          <button onClick={entrarModoGerenciar} className="mt-6 w-full text-center text-sm text-red-600 hover:underline">
             Gerenciar empresas (criar nova, etc.)
           </button>
         )}
