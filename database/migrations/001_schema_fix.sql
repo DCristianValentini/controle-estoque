@@ -210,14 +210,27 @@ TRUNCATE carrinho;
 ALTER TABLE carrinho
   DROP COLUMN usuario_id,
   ADD COLUMN usuario_id UUID REFERENCES profiles(id),
-  ADD COLUMN id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  ADD COLUMN id BIGINT GENERATED ALWAYS AS IDENTITY,
   ADD CONSTRAINT carrinho_item_unico UNIQUE (empresa_id, usuario_id, produto_id);
+-- Defensivo (mesmo motivo de empresa/produtos): se a tabela ja tiver PK numa
+-- outra coluna (ex.: um id oculto que o app antigo nunca lia), "id" so fica
+-- como identity sem ser PK formal — funciona igual pra tudo que o app usa.
+DO $$ BEGIN
+  ALTER TABLE carrinho ADD CONSTRAINT carrinho_pkey PRIMARY KEY (id);
+EXCEPTION WHEN invalid_table_definition THEN
+  RAISE NOTICE 'carrinho: ja tinha PK em outra coluna, "id" fica so como identity, sem PK formal - ok';
+END $$;
 
 ALTER TABLE "vendasEfetivadas"
   RENAME COLUMN usuario_id TO usuario_id_legado;
 ALTER TABLE "vendasEfetivadas"
   ADD COLUMN usuario_id UUID REFERENCES profiles(id),
-  ADD COLUMN id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY;
+  ADD COLUMN id BIGINT GENERATED ALWAYS AS IDENTITY;
+DO $$ BEGIN
+  ALTER TABLE "vendasEfetivadas" ADD CONSTRAINT vendas_pkey PRIMARY KEY (id);
+EXCEPTION WHEN invalid_table_definition THEN
+  RAISE NOTICE 'vendasEfetivadas: ja tinha PK em outra coluna, "id" fica so como identity, sem PK formal - ok';
+END $$;
 COMMENT ON COLUMN "vendasEfetivadas".usuario_id_legado IS
   'ID antigo (int) do app FlutterFlow — AMBIGUO para usuario_id=2 (Bianca ou Mario2, ver bug de duplicidade). Mantido só como referência histórica, sem FK.';
 
