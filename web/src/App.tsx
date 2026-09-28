@@ -1,121 +1,74 @@
 import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { AuthProvider, useAuth } from './lib/auth'
+import { Layout } from './components/Layout'
+import type { View } from './components/Layout'
+import { Spinner } from './components/ui'
+import { LoginPage } from './pages/LoginPage'
+import { SelecionarEmpresaPage } from './pages/SelecionarEmpresaPage'
+import { CatalogoPage } from './pages/CatalogoPage'
+import { CarrinhoPage } from './pages/CarrinhoPage'
+import { ProdutosAdminPage } from './pages/ProdutosAdminPage'
+import { UsuariosPage } from './pages/UsuariosPage'
+import { EmpresasPage } from './pages/EmpresasPage'
+import { RelatorioPage } from './pages/RelatorioPage'
 
-function App() {
-  const [count, setCount] = useState(0)
+function AppShell() {
+  const { session, loading, profile, semAcesso, empresaAtiva, modoGerenciarEmpresas, signOut } = useAuth()
+  const [view, setView] = useState<View>('catalogo')
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-50">
+        <Spinner className="h-8 w-8 text-sky-600" />
+      </div>
+    )
+  }
+
+  if (!session) return <LoginPage />
+
+  if (semAcesso || !profile) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-50 p-6">
+        <div className="max-w-md rounded-xl border border-amber-200 bg-amber-50 p-6 text-center">
+          <p className="text-amber-800">
+            Seu cadastro foi feito, mas você ainda não tem nenhum acesso liberado. Peça para um administrador te
+            convidar.
+          </p>
+          <button onClick={() => signOut()} className="mt-4 text-sm font-medium text-amber-700 underline">
+            Sair
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!empresaAtiva && !modoGerenciarEmpresas) {
+    return <SelecionarEmpresaPage />
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <Layout view={view} onNavigate={setView}>
+      {modoGerenciarEmpresas ? (
+        <EmpresasPage />
+      ) : (
+        <>
+          {view === 'catalogo' && <CatalogoPage />}
+          {view === 'carrinho' && <CarrinhoPage />}
+          {view === 'produtos' && <ProdutosAdminPage />}
+          {view === 'usuarios' && <UsuariosPage />}
+          {view === 'relatorio' && <RelatorioPage />}
+          {view === 'empresas' && <EmpresasPage />}
+        </>
+      )}
+    </Layout>
+  )
+}
 
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+function App() {
+  return (
+    <AuthProvider>
+      <AppShell />
+    </AuthProvider>
   )
 }
 

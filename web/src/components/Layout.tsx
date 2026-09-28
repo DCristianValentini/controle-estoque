@@ -1,0 +1,115 @@
+import { useState } from 'react'
+import type { ReactNode } from 'react'
+import { useAuth } from '../lib/auth'
+
+export type View = 'catalogo' | 'carrinho' | 'produtos' | 'usuarios' | 'empresas' | 'relatorio'
+
+interface NavItem {
+  id: View
+  label: string
+  icon: string
+}
+
+interface LayoutProps {
+  view: View
+  onNavigate: (view: View) => void
+  children: ReactNode
+}
+
+// Menu lateral vira drawer (hambúrguer) em telas estreitas — padrão de
+// responsividade obrigatório do dono do projeto.
+export function Layout({ view, onNavigate, children }: LayoutProps) {
+  const { profile, empresaAtiva, isAdmin, isSuperAdmin, modoGerenciarEmpresas, vinculos, trocarEmpresa, signOut } =
+    useAuth()
+  const [drawerAberto, setDrawerAberto] = useState(false)
+
+  const itens: NavItem[] = []
+  if (!modoGerenciarEmpresas) {
+    itens.push({ id: 'catalogo', label: 'Catálogo', icon: '🛍️' })
+    itens.push({ id: 'carrinho', label: 'Carrinho', icon: '🛒' })
+    if (isAdmin) itens.push({ id: 'produtos', label: 'Produtos', icon: '📦' })
+    if (isAdmin) itens.push({ id: 'usuarios', label: 'Usuários', icon: '👥' })
+    itens.push({ id: 'relatorio', label: 'Relatório', icon: '📊' })
+  }
+  if (isSuperAdmin) itens.push({ id: 'empresas', label: 'Empresas', icon: '🏢' })
+
+  const podeTrocarEmpresa = vinculos.length > 1 || isSuperAdmin
+
+  function navegar(destino: View) {
+    onNavigate(destino)
+    setDrawerAberto(false)
+  }
+
+  return (
+    <div className="flex min-h-screen bg-slate-50">
+      {drawerAberto && (
+        <div className="fixed inset-0 z-40 bg-black/40 lg:hidden" onClick={() => setDrawerAberto(false)} />
+      )}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-slate-200 bg-white transition-transform duration-200 lg:static lg:translate-x-0 ${
+          drawerAberto ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4">
+          <img src="/logo.webp" alt="" className="h-8 w-8 rounded object-contain" />
+          <span className="min-w-0 truncate text-[clamp(0.95rem,0.9rem+0.2vw,1.1rem)] font-semibold text-slate-800">
+            Controle de Estoque
+          </span>
+        </div>
+        <nav className="flex-1 space-y-1 overflow-y-auto p-3">
+          {itens.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => navegar(item.id)}
+              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
+                view === item.id ? 'bg-sky-50 text-sky-700' : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <span aria-hidden>{item.icon}</span>
+              <span className="min-w-0 truncate">{item.label}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="border-t border-slate-100 p-3 text-sm">
+          <p className="min-w-0 truncate font-medium text-slate-700">{profile?.nome}</p>
+          <button
+            onClick={() => signOut()}
+            className="mt-2 w-full rounded-lg px-3 py-2 text-left text-red-600 hover:bg-red-50"
+          >
+            Sair
+          </button>
+        </div>
+      </aside>
+
+      <div className="flex min-h-screen flex-1 flex-col">
+        <header className="grid shrink-0 grid-cols-[auto_1fr_auto] items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 lg:px-6">
+          <button
+            className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden"
+            onClick={() => setDrawerAberto(true)}
+            aria-label="Abrir menu"
+          >
+            ☰
+          </button>
+          <div className="flex min-w-0 items-center justify-center gap-2 text-sm text-slate-600 lg:justify-start">
+            {modoGerenciarEmpresas ? (
+              <span className="font-medium text-slate-800">Gerenciamento de empresas</span>
+            ) : (
+              <span className="min-w-0 truncate font-medium text-slate-800">{empresaAtiva?.nome}</span>
+            )}
+            {podeTrocarEmpresa && (
+              <button
+                onClick={trocarEmpresa}
+                className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-200"
+              >
+                Trocar
+              </button>
+            )}
+          </div>
+          <div className="hidden min-w-0 truncate text-sm text-slate-500 sm:block">{profile?.nome}</div>
+        </header>
+        <main className="flex-1 overflow-y-auto p-4 lg:p-6">{children}</main>
+      </div>
+    </div>
+  )
+}
