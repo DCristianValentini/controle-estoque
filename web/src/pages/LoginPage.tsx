@@ -146,8 +146,8 @@ export function LoginPage() {
 }
 
 function traduzirErro(msg: string): string {
-  if (msg.includes('Invalid login credentials')) return 'E-mail ou senha incorretos.'
-  if (msg.includes('User already registered')) return 'Já existe uma conta com este e-mail — faça login.'
+  if (msg.includes('Invalid login credentials')) return 'Usuário ou senha incorretos.'
+  if (msg.includes('User already registered')) return 'Já existe uma conta com este nome de usuário — faça login.'
   if (msg.toLowerCase().includes('password should be at least')) return 'A senha deve ter pelo menos 6 caracteres.'
   return msg
 }
