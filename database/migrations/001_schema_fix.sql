@@ -1,0 +1,355 @@
+-- =============================================================================
+-- Controle de Estoque — migração de correção do schema (rodar no SQL Editor
+-- do Supabase do projeto Sandiz, uma única vez, dentro de uma transação).
+--
+-- Contexto: produtos/usuarios/empresa tinham "id" gerado no CLIENTE
+-- (MAX(id)+1 escopado por empresa) + upsert merge-duplicates -> isso permitiu
+-- que a empresa 2 sobrescrevesse silenciosamente os produtos da empresa 1
+-- (confirmado: as 284 linhas atuais de produtos sao todas empresa_id=2) e
+-- criou duas linhas com usuarios.id=2 pertencendo a pessoas diferentes
+-- (Bianca na empresa 1, "Mario2" na empresa 2) porque usuarios.id nunca teve
+-- restricao de unicidade real.
+--
+-- Esta migracao: (1) corrige as PKs para serem geradas pelo Postgres,
+-- (2) substitui a autenticacao por Supabase Auth (bcrypt de verdade, sem
+-- senha mestra hardcoded), (3) permite um mesmo usuario acessar VARIAS
+-- empresas (cada vinculo com seu proprio papel: admin ou vendedor),
+-- (4) liga RLS em tudo (hoje nao ha RLS nenhuma — e por isso a anon key
+-- le/escreve tudo), (5) cria a funcao atomica de confirmacao de venda.
+-- =============================================================================
+
+BEGIN;
+
+-- -----------------------------------------------------------------------------
+-- 1. EMPRESA — vira PK de verdade (so tinha 2 linhas, sem colisao aqui)
+-- -----------------------------------------------------------------------------
+ALTER TABLE empresa ADD CONSTRAINT empresa_pkey PRIMARY KEY (id);
+ALTER TABLE empresa ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (START WITH 3);
+
+-- -----------------------------------------------------------------------------
+-- 2. PRODUTOS — vira PK de verdade, continua sequencial a partir do maior id
+--    atual (284). Os 284 produtos existentes sao mantidos como estao — sao
+--    dados legitimos da empresa 2, so a empresa 1 e que foi perdida (sem
+--    backup disponivel para recuperar).
+-- -----------------------------------------------------------------------------
+ALTER TABLE produtos ADD CONSTRAINT produtos_pkey PRIMARY KEY (id);
+ALTER TABLE produtos ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (START WITH 285);
+
+-- -----------------------------------------------------------------------------
+-- 3. USUARIOS antigo -> Supabase Auth + profiles + usuario_empresas
+--
+--    A tabela `usuarios` antiga (id int SEM pk real, nome, empresa_id fixo,
+--    senha sha256, admin bool) e substituida por:
+--      - auth.users        (identidade + senha, gerenciado pelo Supabase)
+--      - profiles          (id uuid = auth.users.id; nome; super_admin bool
+--                            -- dados GLOBAIS da pessoa, sem empresa)
+--      - usuario_empresas   (profile_id, empresa_id, papel) -- vinculo N:N:
+--                            um mesmo usuario pode ter acesso a varias
+--                            empresas, com papel independente em cada uma
+--                            (ex.: admin na loja 1, vendedor na loja 2).
+--      - convites           (fluxo de criacao de usuario sem precisar de
+--                            service_role: admin cria um convite por e-mail
+--                            com a lista de empresas+papeis; a pessoa se
+--                            cadastra com esse e-mail; um trigger cria o
+--                            profile e os vinculos automaticamente).
+--
+--    As 3 linhas antigas de `usuarios` (Mario/empresa1, Bianca/empresa1,
+--    "Mario2"/empresa2 com id=2 duplicado e ambiguo) NAO sao migradas
+--    automaticamente — precisam ser recriadas manualmente via convite (ver
+--    README-migracao.md), ja que nao da pra saber com certeza a senha
+--    original (era sha256 sem salt, e o id=2 esta ambiguo entre 2 pessoas).
+-- -----------------------------------------------------------------------------
+
+CREATE TABLE profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  nome TEXT NOT NULL,
+  super_admin BOOLEAN NOT NULL DEFAULT false,   -- enxerga/administra TODAS as empresas
+  ativo BOOLEAN NOT NULL DEFAULT true,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE usuario_empresas (
+  profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  empresa_id INT NOT NULL REFERENCES empresa(id) ON DELETE CASCADE,
+  papel TEXT NOT NULL CHECK (papel IN ('admin','vendedor')),
+  PRIMARY KEY (profile_id, empresa_id)
+);
+
+CREATE TABLE convites (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email TEXT NOT NULL,
+  nome TEXT NOT NULL,
+  empresas JSONB NOT NULL,   -- [{"empresa_id":1,"papel":"admin"}, {"empresa_id":2,"papel":"vendedor"}]
+  usado BOOLEAN NOT NULL DEFAULT false,
+  criado_por UUID,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX convites_email_pendente ON convites (lower(email)) WHERE usado = false;
+
+-- Helpers de RLS (SECURITY DEFINER pra poder ler profiles/usuario_empresas
+-- mesmo com RLS ligada nelas, sem recursao infinita de policy)
+CREATE OR REPLACE FUNCTION eh_super_admin() RETURNS BOOLEAN
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT COALESCE((SELECT super_admin FROM profiles WHERE id = auth.uid()), false);
+$$;
+
+CREATE OR REPLACE FUNCTION papel_na_empresa(p_empresa_id INT) RETURNS TEXT
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT papel FROM usuario_empresas WHERE profile_id = auth.uid() AND empresa_id = p_empresa_id;
+$$;
+
+CREATE OR REPLACE FUNCTION minhas_empresas() RETURNS SETOF INT
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT empresa_id FROM usuario_empresas WHERE profile_id = auth.uid();
+$$;
+
+-- Valida (fora do super_admin) que quem cria um convite so oferece acesso a
+-- empresas onde ELE MESMO e admin — sem isso, RLS sozinha nao consegue
+-- checar dentro do array JSONB de forma simples.
+CREATE OR REPLACE FUNCTION valida_convite() RETURNS TRIGGER
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE r RECORD;
+BEGIN
+  IF NOT eh_super_admin() THEN
+    FOR r IN SELECT * FROM jsonb_to_recordset(NEW.empresas) AS x(empresa_id INT, papel TEXT) LOOP
+      IF papel_na_empresa(r.empresa_id) IS DISTINCT FROM 'admin' THEN
+        RAISE EXCEPTION 'Sem permissao de admin na empresa %', r.empresa_id;
+      END IF;
+    END LOOP;
+  END IF;
+  NEW.criado_por := auth.uid();
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER trg_valida_convite BEFORE INSERT ON convites
+  FOR EACH ROW EXECUTE FUNCTION valida_convite();
+
+-- Quando alguem se cadastra (supabase.auth.signUp) com um e-mail que tem
+-- convite pendente, cria o profile e os vinculos usuario_empresas certos.
+CREATE OR REPLACE FUNCTION handle_new_user()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_convite convites%ROWTYPE;
+  r RECORD;
+BEGIN
+  SELECT * INTO v_convite FROM convites
+    WHERE lower(email) = lower(NEW.email) AND usado = false
+    ORDER BY criado_em DESC LIMIT 1;
+
+  IF v_convite.id IS NOT NULL THEN
+    INSERT INTO profiles (id, nome, super_admin) VALUES (NEW.id, v_convite.nome, false);
+    FOR r IN SELECT * FROM jsonb_to_recordset(v_convite.empresas) AS x(empresa_id INT, papel TEXT) LOOP
+      INSERT INTO usuario_empresas (profile_id, empresa_id, papel) VALUES (NEW.id, r.empresa_id, r.papel);
+    END LOOP;
+    UPDATE convites SET usado = true WHERE id = v_convite.id;
+  END IF;
+  -- sem convite pendente: usuario fica sem profile -> RLS bloqueia tudo
+  -- (login funciona, mas nao enxerga nenhuma empresa/produto/etc.)
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+
+-- -----------------------------------------------------------------------------
+-- 4. CARRINHO e VENDAS — trocam usuario_id (int, apontava pro usuarios antigo)
+--    por usuario_id (uuid, aponta pra profiles). Como as tabelas antigas tem
+--    poucas linhas (carrinho esta vazio hoje; vendasEfetivadas tem poucas
+--    vendas historicas com usuario_id ja ambiguo por causa do bug), apenas
+--    zeramos o carrinho (nao ha carrinho aberto hoje) e preservamos
+--    vendasEfetivadas como historico "congelado" (usuario_id antigo vira uma
+--    coluna de arquivo, sem FK, ja que nao da pra mapear com confianca).
+--    empresa_id continua em cada linha — e o que diz "essa venda/item e da
+--    loja X", mesmo que o usuario tenha acesso a varias.
+-- -----------------------------------------------------------------------------
+
+TRUNCATE carrinho;
+ALTER TABLE carrinho
+  DROP COLUMN usuario_id,
+  ADD COLUMN usuario_id UUID REFERENCES profiles(id),
+  ADD COLUMN id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  ADD CONSTRAINT carrinho_item_unico UNIQUE (empresa_id, usuario_id, produto_id);
+
+ALTER TABLE "vendasEfetivadas"
+  RENAME COLUMN usuario_id TO usuario_id_legado;
+ALTER TABLE "vendasEfetivadas"
+  ADD COLUMN usuario_id UUID REFERENCES profiles(id),
+  ADD COLUMN id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY;
+COMMENT ON COLUMN "vendasEfetivadas".usuario_id_legado IS
+  'ID antigo (int) do app FlutterFlow — AMBIGUO para usuario_id=2 (Bianca ou Mario2, ver bug de duplicidade). Mantido só como referência histórica, sem FK.';
+
+-- -----------------------------------------------------------------------------
+-- 5. RLS — ligada em tudo. Sem excecao: qualquer tabela nova precisa ganhar
+--    politica explicita, senao fica bloqueada por padrao (fail-closed).
+-- -----------------------------------------------------------------------------
+ALTER TABLE empresa ENABLE ROW LEVEL SECURITY;
+ALTER TABLE produtos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE carrinho ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "vendasEfetivadas" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE usuario_empresas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE convites ENABLE ROW LEVEL SECURITY;
+
+-- profiles: cada um ve o proprio; super_admin ve todos; admin ve quem
+-- compartilha alguma empresa onde ele e admin
+CREATE POLICY profiles_select ON profiles FOR SELECT USING (
+  id = auth.uid()
+  OR eh_super_admin()
+  OR EXISTS (
+    SELECT 1 FROM usuario_empresas mine
+    JOIN usuario_empresas theirs ON theirs.empresa_id = mine.empresa_id
+    WHERE mine.profile_id = auth.uid() AND mine.papel = 'admin' AND theirs.profile_id = profiles.id
+  )
+);
+CREATE POLICY profiles_update_self ON profiles FOR UPDATE USING (id = auth.uid());
+
+-- usuario_empresas: visivel pro proprio usuario, super_admin, ou admin da
+-- mesma empresa (pra gerenciar a equipe); escrita so super_admin/admin da empresa
+CREATE POLICY usuario_empresas_select ON usuario_empresas FOR SELECT USING (
+  profile_id = auth.uid() OR eh_super_admin() OR papel_na_empresa(empresa_id) = 'admin'
+);
+CREATE POLICY usuario_empresas_write ON usuario_empresas FOR ALL USING (
+  eh_super_admin() OR papel_na_empresa(empresa_id) = 'admin'
+);
+
+-- convites: super_admin ve/cria todos; admin ve/cria os que ele mesmo criou
+CREATE POLICY convites_select ON convites FOR SELECT USING (
+  eh_super_admin() OR criado_por = auth.uid()
+);
+CREATE POLICY convites_insert ON convites FOR INSERT WITH CHECK (true); -- checagem real esta no trigger valida_convite
+
+-- empresa: super_admin ve/edita todas; demais so leem as que tem vinculo
+CREATE POLICY empresa_select ON empresa FOR SELECT USING (
+  eh_super_admin() OR id IN (SELECT minhas_empresas())
+);
+CREATE POLICY empresa_write ON empresa FOR ALL USING (eh_super_admin());
+
+-- produtos: leitura por quem tem vinculo com a empresa (qualquer papel);
+-- escrita so quem e admin (ou super_admin) NAQUELA empresa especifica
+CREATE POLICY produtos_select ON produtos FOR SELECT USING (
+  eh_super_admin() OR empresa_id IN (SELECT minhas_empresas())
+);
+CREATE POLICY produtos_insert ON produtos FOR INSERT WITH CHECK (
+  eh_super_admin() OR papel_na_empresa(empresa_id) = 'admin'
+);
+CREATE POLICY produtos_update ON produtos FOR UPDATE USING (
+  eh_super_admin() OR papel_na_empresa(empresa_id) = 'admin'
+);
+CREATE POLICY produtos_delete ON produtos FOR DELETE USING (
+  eh_super_admin() OR papel_na_empresa(empresa_id) = 'admin'
+);
+
+-- carrinho: cada usuario mexe so no proprio, e so em empresa onde tem vinculo
+CREATE POLICY carrinho_dono ON carrinho FOR ALL USING (
+  usuario_id = auth.uid() AND (eh_super_admin() OR papel_na_empresa(empresa_id) IS NOT NULL)
+) WITH CHECK (
+  usuario_id = auth.uid() AND (eh_super_admin() OR papel_na_empresa(empresa_id) IS NOT NULL)
+);
+
+-- vendasEfetivadas: leitura por quem vendeu, ou admin/super_admin da empresa;
+-- NENHUMA politica de INSERT/UPDATE/DELETE direto -- so a funcao
+-- confirmar_venda() (SECURITY DEFINER) pode gravar.
+CREATE POLICY vendas_select ON "vendasEfetivadas" FOR SELECT USING (
+  eh_super_admin() OR papel_na_empresa(empresa_id) = 'admin' OR usuario_id = auth.uid()
+);
+
+-- -----------------------------------------------------------------------------
+-- 6. Trava a anon key de vez: sem sessao autenticada, nada e visivel.
+-- -----------------------------------------------------------------------------
+REVOKE ALL ON empresa, produtos, carrinho, "vendasEfetivadas", profiles, usuario_empresas, convites
+  FROM anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON empresa, produtos, carrinho, "vendasEfetivadas", profiles, usuario_empresas, convites
+  TO authenticated;
+
+-- -----------------------------------------------------------------------------
+-- 7. Funcao atomica de confirmacao de venda. Recebe a empresa explicitamente
+--    (o usuario pode ter carrinho aberto em mais de uma empresa ao mesmo tempo).
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION confirmar_venda(p_empresa_id INT, p_nome_cliente TEXT)
+RETURNS TABLE(venda_id BIGINT) LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_usuario_id UUID := auth.uid();
+  item RECORD;
+  v_venda_id BIGINT;
+BEGIN
+  IF NOT eh_super_admin() AND papel_na_empresa(p_empresa_id) IS NULL THEN
+    RAISE EXCEPTION 'Sem acesso a empresa %', p_empresa_id;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM carrinho WHERE usuario_id = v_usuario_id AND empresa_id = p_empresa_id) THEN
+    RAISE EXCEPTION 'Carrinho vazio';
+  END IF;
+
+  FOR item IN
+    SELECT c.produto_id, c.quantidade, c.valor_acertado, c.perc_desc,
+           p.quantidade AS estoque, p."descontoMax" AS desconto_max
+    FROM carrinho c
+    JOIN produtos p ON p.id = c.produto_id
+    WHERE c.usuario_id = v_usuario_id AND c.empresa_id = p_empresa_id
+    FOR UPDATE OF p
+  LOOP
+    IF item.perc_desc > item.desconto_max THEN
+      RAISE EXCEPTION 'Desconto % acima do maximo permitido (%) para o produto %',
+        item.perc_desc, item.desconto_max, item.produto_id;
+    END IF;
+
+    UPDATE produtos SET quantidade = quantidade - item.quantidade
+      WHERE id = item.produto_id AND quantidade >= item.quantidade;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'Estoque insuficiente para o produto %', item.produto_id;
+    END IF;
+
+    INSERT INTO "vendasEfetivadas"
+      (empresa_id, usuario_id, produto_id, quantidade, valor_acertado, perc_desc, "dataHora", "nomeCli")
+      VALUES (p_empresa_id, v_usuario_id, item.produto_id, item.quantidade,
+              item.valor_acertado, item.perc_desc, now(), p_nome_cliente)
+      RETURNING id INTO v_venda_id;
+  END LOOP;
+
+  DELETE FROM carrinho WHERE usuario_id = v_usuario_id AND empresa_id = p_empresa_id;
+  venda_id := v_venda_id;
+  RETURN NEXT;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION confirmar_venda(INT, TEXT) FROM public, anon;
+GRANT EXECUTE ON FUNCTION confirmar_venda(INT, TEXT) TO authenticated;
+
+-- -----------------------------------------------------------------------------
+-- 8. Storage (bucket imagensProdutos) — leitura publica (mantem URLs antigas
+--    funcionando, todas sob o prefixo "public/"). Novos uploads vao para
+--    "<empresa_id>/<random8>.webp" (fica facil restringir escrita por
+--    empresa lendo o 1o segmento do path); escrita so pra quem e admin
+--    (ou super_admin) naquela empresa.
+-- -----------------------------------------------------------------------------
+CREATE POLICY imagens_leitura_publica ON storage.objects FOR SELECT
+  USING (bucket_id = 'imagensProdutos');
+
+CREATE POLICY imagens_escrita_admin ON storage.objects FOR INSERT WITH CHECK (
+  bucket_id = 'imagensProdutos'
+  AND (eh_super_admin() OR papel_na_empresa(NULLIF((storage.foldername(name))[1], 'public')::int) = 'admin')
+);
+CREATE POLICY imagens_update_admin ON storage.objects FOR UPDATE USING (
+  bucket_id = 'imagensProdutos'
+  AND (eh_super_admin() OR papel_na_empresa(NULLIF((storage.foldername(name))[1], 'public')::int) = 'admin')
+);
+CREATE POLICY imagens_delete_admin ON storage.objects FOR DELETE USING (
+  bucket_id = 'imagensProdutos' AND eh_super_admin()
+  -- delete de foto vinculada (dentro de "public/") fica restrito a super_admin
+  -- de proposito -- e a pasta com os 176 orfaos, remover de la e definitivo.
+  OR (bucket_id = 'imagensProdutos'
+      AND papel_na_empresa(NULLIF((storage.foldername(name))[1], 'public')::int) = 'admin')
+);
+
+COMMIT;
+
+-- =============================================================================
+-- DEPOIS DE RODAR ISSO: siga o README-migracao.md na mesma pasta para:
+--  1. Criar o primeiro super_admin (convite + cadastro).
+--  2. Recriar os usuarios (Mario, Bianca, Mario2) via convite, com senha nova
+--     e, se fizer sentido, acesso as duas empresas de uma vez.
+--  3. A antiga tabela `usuarios` pode ser renomeada usuarios_legado ou
+--     apagada depois de conferir que nada mais referencia ela.
+-- =============================================================================
