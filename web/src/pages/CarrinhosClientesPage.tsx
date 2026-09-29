@@ -99,6 +99,26 @@ export function CarrinhosClientesPage() {
     await carregar()
   }
 
+  // Negociação caiu, cliente desistiu etc. — esvazia sem gerar venda. Só mexe
+  // nos itens pendentes desta empresa (histórico de venda já confirmada não é
+  // afetado, a função no banco garante isso).
+  async function esvaziarCarrinho(clienteId: string) {
+    if (!empresaAtiva) return
+    if (!confirm('Esvaziar o carrinho deste cliente sem confirmar venda?')) return
+    setErro(null)
+    const { error } = await supabase.rpc('esvaziar_carrinho_publico', {
+      p_cliente_id: clienteId,
+      p_empresa_id: empresaAtiva.id,
+    })
+    if (error) {
+      setErro(error.message)
+      return
+    }
+    setMensagem('Carrinho esvaziado.')
+    window.setTimeout(() => setMensagem(null), 3000)
+    await carregar()
+  }
+
   if (!empresaAtiva) return null
 
   return (
@@ -129,7 +149,12 @@ export function CarrinhosClientesPage() {
                     📱 {cliente.whatsapp}
                   </a>
                 </div>
-                <Button onClick={() => confirmarVenda(cliente.id)}>Confirmar venda</Button>
+                <div className="flex gap-2">
+                  <Button variant="secondary" onClick={() => esvaziarCarrinho(cliente.id)}>
+                    Esvaziar carrinho
+                  </Button>
+                  <Button onClick={() => confirmarVenda(cliente.id)}>Confirmar venda</Button>
+                </div>
               </div>
               <div className="space-y-3">
                 {cliente.itens.map((item) => (

@@ -22,14 +22,16 @@ export async function sessaoClientePublicoAtual(): Promise<string | null> {
 export async function obterClientePublicoAtual(): Promise<ClientePublico | null> {
   const clienteId = await sessaoClientePublicoAtual()
   if (!clienteId) return null
-  const { data } = await supabase.from('clientes_publicos').select('*').eq('id', clienteId).maybeSingle()
+  const { data } = await supabase.from('clientes_publicos').select('id, nome, whatsapp').eq('id', clienteId).maybeSingle()
   return data
 }
 
-// Garante uma sessão anônima + registro em clientes_publicos. O cadastro é
-// único pra qualquer loja (pedido do usuário: "o login serve pra todas as
-// lojas") — se já existe (retornando de outra visita, ou trocando de loja),
-// não sobrescreve nome/whatsapp, só reaproveita.
+// Garante uma sessão anônima + registro em clientes_publicos. A identidade
+// real da pessoa é o WHATSAPP, não a sessão anônima do navegador: se ela já
+// tinha se cadastrado antes (outro navegador, dados limpos, sessão expirada),
+// a função identificar_cliente_publico (RPC, SECURITY DEFINER) recupera o
+// cadastro antigo pelo número em vez de criar um duplicado — é ela quem faz
+// o "já existe?" com o whatsapp normalizado, não este código.
 export async function garantirClientePublico(nome: string, whatsapp: string): Promise<ClientePublico> {
   const {
     data: { session: sessaoAtual },
@@ -43,16 +45,12 @@ export async function garantirClientePublico(nome: string, whatsapp: string): Pr
   }
   if (!session) throw new Error('Não foi possível iniciar sua identificação como cliente.')
 
-  const { data: existente } = await supabase.from('clientes_publicos').select('*').eq('id', session.user.id).maybeSingle()
-  if (existente) return existente
-
-  const nomeFinal = nome.trim()
-  const whatsappFinal = whatsapp.trim()
-  const { error } = await supabase
-    .from('clientes_publicos')
-    .insert({ id: session.user.id, nome: nomeFinal, whatsapp: whatsappFinal })
+  const { data, error } = await supabase.rpc('identificar_cliente_publico', {
+    p_nome: nome,
+    p_whatsapp: whatsapp,
+  })
   if (error) throw error
-  return { id: session.user.id, nome: nomeFinal, whatsapp: whatsappFinal }
+  return data as ClientePublico
 }
 
 // Adiciona/atualiza um item do carrinho público. Igual ao carrinho interno:
