@@ -1,0 +1,5 @@
+{
+  "appId": "br.com.sandiz.controleestoque",
+  "appName": "Controle de Estoque",
+  "webDir": "../web/dist"
+}

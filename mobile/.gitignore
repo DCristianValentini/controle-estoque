@@ -1,0 +1,14 @@
+node_modules
+
+# Android build
+android/.gradle
+android/build
+android/app/build
+android/local.properties
+android/captures
+android/.idea
+
+# Assinatura de release -- NUNCA versionar chave nem senha
+android/keystore.properties
+*.keystore
+*.jks
