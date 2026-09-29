@@ -447,9 +447,12 @@ CREATE POLICY empresa_select_publico ON empresa FOR SELECT TO anon USING (ativo 
 --     "Allow anonymous sign-ins" (desligado por padrao).
 -- -----------------------------------------------------------------------------
 
+-- Identidade do cliente e' unica pra TODAS as lojas (pedido explicito do
+-- usuario: "o login serve pra todas as lojas") -- por isso sem empresa_id
+-- aqui; quem sabe de qual loja e' cada item e' o carrinho_publico, nao o
+-- cadastro da pessoa.
 CREATE TABLE clientes_publicos (
   id UUID PRIMARY KEY,   -- = auth.uid() da sessao anonima, nunca gerado a parte
-  empresa_id INT NOT NULL REFERENCES empresa(id),
   nome TEXT NOT NULL,
   whatsapp TEXT NOT NULL,
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -472,16 +475,15 @@ CREATE TABLE carrinho_publico (
 ALTER TABLE clientes_publicos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE carrinho_publico ENABLE ROW LEVEL SECURITY;
 
--- clientes_publicos: cliente cria/ve so o proprio registro; vendedor/admin da
--- empresa veem os clientes da propria loja (pra ligar/chamar no whatsapp).
+-- clientes_publicos: cliente cria/ve so o proprio registro; vendedor/admin
+-- ve quem tem item de carrinho na PROPRIA empresa (a pessoa pode ter
+-- comprado em varias lojas com o mesmo cadastro -- so aparece pra quem
+-- tem vinculo com a loja daquele item especifico).
 CREATE POLICY clientes_publicos_self_insert ON clientes_publicos FOR INSERT
   WITH CHECK (id = auth.uid());
--- inclui quem tem item de carrinho na empresa (nao so o campo empresa_id do
--- cadastro), pro caso raro de o mesmo cliente comprar em mais de uma loja.
 CREATE POLICY clientes_publicos_select ON clientes_publicos FOR SELECT USING (
   id = auth.uid()
   OR eh_super_admin()
-  OR papel_na_empresa(empresa_id) IS NOT NULL
   OR EXISTS (
     SELECT 1 FROM carrinho_publico cp
     WHERE cp.cliente_id = clientes_publicos.id AND papel_na_empresa(cp.empresa_id) IS NOT NULL
@@ -556,29 +558,33 @@ GRANT EXECUTE ON FUNCTION definir_desconto_publico(BIGINT, NUMERIC) TO authentic
 -- mesma logica atomica de confirmar_venda (valida estoque, debita, grava
 -- vendasEfetivadas), so que a origem e carrinho_publico e quem "vendeu"
 -- (usuario_id em vendasEfetivadas) e o vendedor logado, nao o cliente.
-CREATE OR REPLACE FUNCTION confirmar_carrinho_publico(p_cliente_id UUID)
+-- Recebe a empresa explicitamente: como o cadastro do cliente agora vale
+-- pra qualquer loja, ele pode ter itens pendentes em mais de uma empresa ao
+-- mesmo tempo -- confirmar so processa os itens DAQUELA loja.
+CREATE OR REPLACE FUNCTION confirmar_carrinho_publico(p_cliente_id UUID, p_empresa_id INT)
 RETURNS TABLE(venda_id BIGINT) LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
-  v_empresa_id INT;
   v_nome_cliente TEXT;
   item RECORD;
   v_venda_id BIGINT;
 BEGIN
-  SELECT empresa_id, nome INTO v_empresa_id, v_nome_cliente FROM clientes_publicos WHERE id = p_cliente_id;
-  IF v_empresa_id IS NULL THEN
+  SELECT nome INTO v_nome_cliente FROM clientes_publicos WHERE id = p_cliente_id;
+  IF v_nome_cliente IS NULL THEN
     RAISE EXCEPTION 'Cliente nao encontrado';
   END IF;
-  IF NOT eh_super_admin() AND papel_na_empresa(v_empresa_id) IS NULL THEN
+  IF NOT eh_super_admin() AND papel_na_empresa(p_empresa_id) IS NULL THEN
     RAISE EXCEPTION 'Sem acesso a esta empresa';
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM carrinho_publico WHERE cliente_id = p_cliente_id AND status = 'pendente') THEN
+  IF NOT EXISTS (
+    SELECT 1 FROM carrinho_publico WHERE cliente_id = p_cliente_id AND empresa_id = p_empresa_id AND status = 'pendente'
+  ) THEN
     RAISE EXCEPTION 'Carrinho vazio';
   END IF;
 
   FOR item IN
     SELECT cp.id, cp.produto_id, cp.quantidade, cp.valor_original, cp.valor_acertado, cp.perc_desc
     FROM carrinho_publico cp
-    WHERE cp.cliente_id = p_cliente_id AND cp.status = 'pendente'
+    WHERE cp.cliente_id = p_cliente_id AND cp.empresa_id = p_empresa_id AND cp.status = 'pendente'
     FOR UPDATE
   LOOP
     UPDATE produtos SET quantidade = quantidade - item.quantidade
@@ -589,7 +595,7 @@ BEGIN
 
     INSERT INTO "vendasEfetivadas"
       (empresa_id, usuario_id, produto_id, quantidade, valor_acertado, perc_desc, "dataHora", "nomeCli")
-      VALUES (v_empresa_id, auth.uid(), item.produto_id, item.quantidade,
+      VALUES (p_empresa_id, auth.uid(), item.produto_id, item.quantidade,
               COALESCE(item.valor_acertado, item.valor_original), item.perc_desc, now(), v_nome_cliente)
       RETURNING id INTO v_venda_id;
 
@@ -600,8 +606,8 @@ BEGIN
   RETURN NEXT;
 END;
 $$;
-REVOKE ALL ON FUNCTION confirmar_carrinho_publico(UUID) FROM public, anon;
-GRANT EXECUTE ON FUNCTION confirmar_carrinho_publico(UUID) TO authenticated;
+REVOKE ALL ON FUNCTION confirmar_carrinho_publico(UUID, INT) FROM public, anon;
+GRANT EXECUTE ON FUNCTION confirmar_carrinho_publico(UUID, INT) TO authenticated;
 
 -- Realtime: a tela do cliente escuta mudancas no proprio carrinho (pra ver o
 -- desconto/valor aparecer sozinho quando o vendedor negociar).

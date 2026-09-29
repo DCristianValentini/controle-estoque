@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
-import type { CarrinhoPublicoItem, ProdutoPublico } from '../lib/types'
+import type { CarrinhoPublicoItem, Produto } from '../lib/types'
 import { formatarMoeda } from '../lib/format'
-import { Button, Card, Input, Spinner } from '../components/ui'
+import { Button, Card, Spinner } from '../components/ui'
 
 interface ItemComProduto extends CarrinhoPublicoItem {
-  produto?: Pick<ProdutoPublico, 'nome'>
+  produto?: Pick<Produto, 'nome' | 'descontoMax'>
 }
 
 interface Cliente {
@@ -37,7 +37,7 @@ export function CarrinhosClientesPage() {
     setErro(null)
     const { data: itens, error } = await supabase
       .from('carrinho_publico')
-      .select('*, produto:produtos(nome)')
+      .select('*, produto:produtos(nome, descontoMax)')
       .eq('empresa_id', empresaAtiva.id)
       .eq('status', 'pendente')
       .order('atualizado_em', { ascending: false })
@@ -83,9 +83,13 @@ export function CarrinhosClientesPage() {
   }
 
   async function confirmarVenda(clienteId: string) {
+    if (!empresaAtiva) return
     if (!confirm('Confirmar a venda de todos os itens do carrinho deste cliente?')) return
     setErro(null)
-    const { error } = await supabase.rpc('confirmar_carrinho_publico', { p_cliente_id: clienteId })
+    const { error } = await supabase.rpc('confirmar_carrinho_publico', {
+      p_cliente_id: clienteId,
+      p_empresa_id: empresaAtiva.id,
+    })
     if (error) {
       setErro(error.message)
       return
@@ -127,7 +131,7 @@ export function CarrinhosClientesPage() {
                 </div>
                 <Button onClick={() => confirmarVenda(cliente.id)}>Confirmar venda</Button>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {cliente.itens.map((item) => (
                   <ItemLinha key={item.id} item={item} onAplicarDesconto={(perc) => aplicarDesconto(item.id, perc)} />
                 ))}
@@ -141,28 +145,40 @@ export function CarrinhosClientesPage() {
 }
 
 function ItemLinha({ item, onAplicarDesconto }: { item: ItemComProduto; onAplicarDesconto: (perc: number) => void }) {
-  const [desconto, setDesconto] = useState(String(item.perc_desc))
+  const descontoMax = item.produto?.descontoMax ?? 0
+  const [desconto, setDesconto] = useState(item.perc_desc)
   const valorFinal = item.valor_acertado ?? item.valor_original
 
   return (
-    <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2 border-t border-slate-100 pt-2 text-sm">
-      <span className="min-w-0 truncate">
-        {item.quantidade}x {item.produto?.nome}
-      </span>
-      <span className="shrink-0 text-slate-500">{formatarMoeda(item.valor_original)} un.</span>
-      <div className="flex shrink-0 items-center gap-1">
-        <Input
-          className="w-16 text-center"
-          value={desconto}
-          onChange={(e) => setDesconto(e.target.value)}
-          inputMode="decimal"
-        />
-        <span className="text-xs text-slate-500">%</span>
-        <Button variant="secondary" onClick={() => onAplicarDesconto(Number(desconto.replace(',', '.')) || 0)}>
-          Aplicar
-        </Button>
+    <div className="space-y-1 border-t border-slate-100 pt-2 text-sm">
+      <div className="flex items-center justify-between gap-2">
+        <span className="min-w-0 truncate">
+          {item.quantidade}x {item.produto?.nome}
+        </span>
+        <span className="shrink-0 text-slate-500">{formatarMoeda(item.valor_original)} un.</span>
       </div>
-      <span className="shrink-0 font-semibold text-red-700">{formatarMoeda(valorFinal)}</span>
+
+      {descontoMax > 0 ? (
+        <div className="flex items-center gap-3">
+          <input
+            type="range"
+            min={0}
+            max={descontoMax}
+            step={0.1}
+            value={desconto}
+            onChange={(e) => setDesconto(Number(e.target.value))}
+            className="w-full accent-red-600"
+          />
+          <span className="w-14 shrink-0 text-right text-xs text-slate-500">{desconto.toFixed(1)}%</span>
+          <Button variant="secondary" className="shrink-0" onClick={() => onAplicarDesconto(desconto)}>
+            Aplicar
+          </Button>
+        </div>
+      ) : (
+        <p className="text-xs text-slate-400">Este produto não permite desconto.</p>
+      )}
+
+      <p className="text-right font-semibold text-red-700">{formatarMoeda(valorFinal)}</p>
     </div>
   )
 }

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { sessaoClientePublicoAtual } from '../lib/clientePublico'
 import type { CarrinhoPublicoItem, ProdutoPublico } from '../lib/types'
 import { formatarMoeda } from '../lib/format'
 import { Badge, Button, Card, Modal, Spinner } from './ui'
@@ -10,22 +9,24 @@ interface ItemComProduto extends CarrinhoPublicoItem {
 }
 
 interface Props {
+  clienteId: string
   onClose: () => void
 }
 
-// Carrinho do visitante: lê os itens pendentes e escuta mudanças em tempo
-// real (Realtime) — quando o vendedor definir um desconto pelo WhatsApp, o
-// valor aparece aqui sozinho, sem precisar recarregar a página.
-export function MeuCarrinhoPublicoModal({ onClose }: Props) {
-  const [clienteId, setClienteId] = useState<string | null>(null)
+// Carrinho do visitante já identificado: lê os itens pendentes, deixa
+// editar quantidade ou remover, e escuta mudanças em tempo real (Realtime)
+// — quando o vendedor definir um desconto pelo WhatsApp, o valor aparece
+// aqui sozinho, sem precisar recarregar a página.
+export function MeuCarrinhoPublicoModal({ clienteId, onClose }: Props) {
   const [itens, setItens] = useState<ItemComProduto[]>([])
   const [carregando, setCarregando] = useState(true)
+  const [erro, setErro] = useState<string | null>(null)
 
-  async function carregar(id: string) {
+  async function carregar() {
     const { data } = await supabase
       .from('carrinho_publico')
       .select('*, produto:produtos(nome, imagens_Path)')
-      .eq('cliente_id', id)
+      .eq('cliente_id', clienteId)
       .eq('status', 'pendente')
       .order('id')
     setItens((data as ItemComProduto[]) ?? [])
@@ -33,26 +34,17 @@ export function MeuCarrinhoPublicoModal({ onClose }: Props) {
   }
 
   useEffect(() => {
-    let ativo = true
-    sessaoClientePublicoAtual().then((id) => {
-      if (!ativo) return
-      setClienteId(id)
-      if (id) carregar(id)
-      else setCarregando(false)
-    })
-    return () => {
-      ativo = false
-    }
-  }, [])
+    carregar()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clienteId])
 
   useEffect(() => {
-    if (!clienteId) return
     const canal = supabase
       .channel(`carrinho-publico-${clienteId}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'carrinho_publico', filter: `cliente_id=eq.${clienteId}` },
-        () => carregar(clienteId),
+        () => carregar(),
       )
       .subscribe()
     return () => {
@@ -61,10 +53,21 @@ export function MeuCarrinhoPublicoModal({ onClose }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clienteId])
 
+  async function alterarQuantidade(itemId: number, novaQuantidade: number) {
+    setErro(null)
+    const { error } = await supabase.rpc('atualizar_quantidade_publico', { p_id: itemId, p_quantidade: novaQuantidade })
+    if (error) {
+      setErro(error.message)
+      return
+    }
+    await carregar()
+  }
+
   const total = itens.reduce((soma, item) => soma + (item.valor_acertado ?? item.valor_original) * item.quantidade, 0)
 
   return (
     <Modal open onClose={onClose} title="Meu carrinho" footer={null}>
+      {erro && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{erro}</p>}
       {carregando ? (
         <div className="flex justify-center py-8">
           <Spinner className="h-6 w-6 text-red-600" />
@@ -86,7 +89,30 @@ export function MeuCarrinhoPublicoModal({ onClose }: Props) {
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="min-w-0 truncate text-sm font-medium text-slate-800">{item.produto?.nome}</p>
-                  <p className="text-xs text-slate-500">{item.quantidade}x</p>
+                  <div className="mt-1 flex items-center gap-2">
+                    <button
+                      onClick={() => alterarQuantidade(item.id, item.quantidade - 1)}
+                      disabled={item.quantidade <= 1}
+                      className="flex h-6 w-6 items-center justify-center rounded bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:opacity-40"
+                      aria-label="Diminuir quantidade"
+                    >
+                      −
+                    </button>
+                    <span className="w-5 text-center text-sm">{item.quantidade}</span>
+                    <button
+                      onClick={() => alterarQuantidade(item.id, item.quantidade + 1)}
+                      className="flex h-6 w-6 items-center justify-center rounded bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      aria-label="Aumentar quantidade"
+                    >
+                      +
+                    </button>
+                    <button
+                      onClick={() => alterarQuantidade(item.id, 0)}
+                      className="ml-1 text-xs text-red-600 hover:underline"
+                    >
+                      Remover
+                    </button>
+                  </div>
                 </div>
                 <div className="shrink-0 text-right">
                   {negociado ? (

@@ -1,26 +1,35 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { sessaoClientePublicoAtual } from '../lib/clientePublico'
+import { obterClientePublicoAtual } from '../lib/clientePublico'
+import type { ClientePublico } from '../lib/clientePublico'
 import type { Empresa, ProdutoPublico } from '../lib/types'
 import { formatarMoeda, normalizarBusca } from '../lib/format'
 import { Badge, Card, Input, Select, Spinner } from '../components/ui'
 import { ProdutoPublicoModal } from '../components/ProdutoPublicoModal'
 import { MeuCarrinhoPublicoModal } from '../components/MeuCarrinhoPublicoModal'
+import { IdentificacaoClienteModal } from '../components/IdentificacaoClienteModal'
 import logoUrl from '../assets/branding/logo.webp'
 
 interface Props {
   onEntrar: () => void
 }
 
+type Ordenacao = 'nome-asc' | 'nome-desc' | 'preco-asc' | 'preco-desc'
+
 // Catálogo visível sem login: visitante escolhe a loja, vê preço/imagens/
-// estoque de cada produto, mas não vê desconto nem consegue comprar — só
-// "Entrar" (topo direito) libera carrinho e desconto.
+// estoque de cada produto, mas não vê desconto. Pra montar carrinho (e pra
+// só ver o próprio carrinho) precisa se identificar antes (nome+WhatsApp,
+// tela própria "Identifique-se") — pedido explícito do usuário, sem
+// formulário encaixado dentro do produto.
 export function CatalogoPublicoPage({ onEntrar }: Props) {
   const [empresas, setEmpresas] = useState<Empresa[]>([])
   const [carregandoEmpresas, setCarregandoEmpresas] = useState(true)
   const [empresaId, setEmpresaId] = useState<number | null>(null)
   const [mostrarCarrinho, setMostrarCarrinho] = useState(false)
   const [contadorCarrinho, setContadorCarrinho] = useState(0)
+  const [clienteAtual, setClienteAtual] = useState<ClientePublico | null>(null)
+  const [mostrarIdentificacao, setMostrarIdentificacao] = useState(false)
+  const callbackIdentificacaoRef = useRef<((cliente: ClientePublico) => void) | null>(null)
 
   useEffect(() => {
     supabase
@@ -31,11 +40,10 @@ export function CatalogoPublicoPage({ onEntrar }: Props) {
         setEmpresas(data ?? [])
         setCarregandoEmpresas(false)
       })
+    obterClientePublicoAtual().then(setClienteAtual)
   }, [])
 
-  async function atualizarContador() {
-    const clienteId = await sessaoClientePublicoAtual()
-    if (!clienteId) return
+  async function atualizarContador(clienteId: string) {
     const { count } = await supabase
       .from('carrinho_publico')
       .select('id', { count: 'exact', head: true })
@@ -45,8 +53,31 @@ export function CatalogoPublicoPage({ onEntrar }: Props) {
   }
 
   useEffect(() => {
-    atualizarContador()
-  }, [])
+    if (clienteAtual) atualizarContador(clienteAtual.id)
+  }, [clienteAtual])
+
+  // Usado tanto pelo botão do carrinho quanto pelo "adicionar ao carrinho"
+  // dentro do produto: se já tem cadastro, resolve na hora; senão, abre a
+  // tela de identificação e só resolve quando a pessoa concluir.
+  function exigirCliente(): Promise<ClientePublico> {
+    if (clienteAtual) return Promise.resolve(clienteAtual)
+    return new Promise((resolve) => {
+      callbackIdentificacaoRef.current = resolve
+      setMostrarIdentificacao(true)
+    })
+  }
+
+  function aoIdentificar(cliente: ClientePublico) {
+    setClienteAtual(cliente)
+    setMostrarIdentificacao(false)
+    callbackIdentificacaoRef.current?.(cliente)
+    callbackIdentificacaoRef.current = null
+  }
+
+  async function abrirCarrinho() {
+    await exigirCliente()
+    setMostrarCarrinho(true)
+  }
 
   const empresaAtiva = empresas.find((e) => e.id === empresaId) ?? null
 
@@ -68,11 +99,8 @@ export function CatalogoPublicoPage({ onEntrar }: Props) {
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <button
-            onClick={() => setMostrarCarrinho(true)}
-            className="relative rounded-lg p-2 text-slate-600 hover:bg-slate-100"
-            aria-label="Meu carrinho"
-          >
+          {clienteAtual && <span className="hidden text-sm text-slate-500 sm:inline">Olá, {clienteAtual.nome}</span>}
+          <button onClick={abrirCarrinho} className="relative rounded-lg p-2 text-slate-600 hover:bg-slate-100" aria-label="Meu carrinho">
             🛒
             {contadorCarrinho > 0 && (
               <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-xs font-semibold text-white">
@@ -89,11 +117,22 @@ export function CatalogoPublicoPage({ onEntrar }: Props) {
         </div>
       </header>
 
-      {mostrarCarrinho && (
+      {mostrarIdentificacao && (
+        <IdentificacaoClienteModal
+          onCadastrado={aoIdentificar}
+          onClose={() => {
+            setMostrarIdentificacao(false)
+            callbackIdentificacaoRef.current = null
+          }}
+        />
+      )}
+
+      {mostrarCarrinho && clienteAtual && (
         <MeuCarrinhoPublicoModal
+          clienteId={clienteAtual.id}
           onClose={() => {
             setMostrarCarrinho(false)
-            atualizarContador()
+            atualizarContador(clienteAtual.id)
           }}
         />
       )}
@@ -106,7 +145,11 @@ export function CatalogoPublicoPage({ onEntrar }: Props) {
         ) : !empresaAtiva ? (
           <SelecaoLoja empresas={empresas} onEscolher={setEmpresaId} />
         ) : (
-          <CatalogoDaLoja empresaId={empresaAtiva.id} onAdicionadoAoCarrinho={atualizarContador} />
+          <CatalogoDaLoja
+            empresaId={empresaAtiva.id}
+            exigirCliente={exigirCliente}
+            onAdicionadoAoCarrinho={() => clienteAtual && atualizarContador(clienteAtual.id)}
+          />
         )}
       </main>
     </div>
@@ -136,17 +179,27 @@ function SelecaoLoja({ empresas, onEscolher }: { empresas: Empresa[]; onEscolher
   )
 }
 
+const OPCOES_ORDENACAO: { value: Ordenacao; label: string }[] = [
+  { value: 'nome-asc', label: 'Nome (A-Z)' },
+  { value: 'nome-desc', label: 'Nome (Z-A)' },
+  { value: 'preco-asc', label: 'Menor preço' },
+  { value: 'preco-desc', label: 'Maior preço' },
+]
+
 function CatalogoDaLoja({
   empresaId,
+  exigirCliente,
   onAdicionadoAoCarrinho,
 }: {
   empresaId: number
+  exigirCliente: () => Promise<ClientePublico>
   onAdicionadoAoCarrinho: () => void
 }) {
   const [produtos, setProdutos] = useState<ProdutoPublico[]>([])
   const [carregando, setCarregando] = useState(true)
   const [busca, setBusca] = useState('')
   const [categoria, setCategoria] = useState('')
+  const [ordenacao, setOrdenacao] = useState<Ordenacao>('nome-asc')
   const [produtoSelecionado, setProdutoSelecionado] = useState<ProdutoPublico | null>(null)
 
   useEffect(() => {
@@ -170,13 +223,27 @@ function CatalogoDaLoja({
 
   const filtrados = useMemo(() => {
     const buscaNormalizada = normalizarBusca(busca)
-    return produtos.filter((p) => {
+    const lista = produtos.filter((p) => {
       if (categoria && p.categoria !== categoria) return false
       if (!buscaNormalizada) return true
       const alvo = normalizarBusca(`${p.nome} ${p.sku ?? ''}`)
       return alvo.includes(buscaNormalizada)
     })
-  }, [produtos, busca, categoria])
+    const ordenada = [...lista]
+    ordenada.sort((a, b) => {
+      switch (ordenacao) {
+        case 'nome-desc':
+          return b.nome.localeCompare(a.nome, 'pt-BR')
+        case 'preco-asc':
+          return a.valor - b.valor
+        case 'preco-desc':
+          return b.valor - a.valor
+        default:
+          return a.nome.localeCompare(b.nome, 'pt-BR')
+      }
+    })
+    return ordenada
+  }, [produtos, busca, categoria, ordenacao])
 
   return (
     <div>
@@ -191,6 +258,9 @@ function CatalogoDaLoja({
             placeholder="Todas as categorias"
             options={categorias.map((c) => ({ value: c, label: c }))}
           />
+        </div>
+        <div className="sm:w-48">
+          <Select value={ordenacao} onChange={(e) => setOrdenacao(e.target.value as Ordenacao)} options={OPCOES_ORDENACAO} />
         </div>
       </div>
 
@@ -234,6 +304,7 @@ function CatalogoDaLoja({
           produto={produtoSelecionado}
           onClose={() => setProdutoSelecionado(null)}
           onAdicionado={onAdicionadoAoCarrinho}
+          exigirCliente={exigirCliente}
         />
       )}
     </div>

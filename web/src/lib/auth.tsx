@@ -109,6 +109,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: assinatura } = supabase.auth.onAuthStateChange((_evento, novaSessao) => {
       setSession(novaSessao)
+      // Sessao anonima (signInAnonymously, do carrinho de cliente publico)
+      // nunca tem profile/vinculo -- so' atualiza a sessao e sai, sem
+      // acionar o "loading" global (que desmontava o catalogo publico e
+      // resetava o estado dele bem no meio do cadastro do cliente).
+      if (novaSessao?.user.is_anonymous) {
+        return
+      }
       if (novaSessao) {
         setLoading(true)
         carregarPerfil(novaSessao.user.id).finally(() => setLoading(false))

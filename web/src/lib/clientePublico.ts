@@ -7,7 +7,6 @@ import { supabase } from './supabase'
 
 export interface ClientePublico {
   id: string
-  empresa_id: number
   nome: string
   whatsapp: string
 }
@@ -27,10 +26,11 @@ export async function obterClientePublicoAtual(): Promise<ClientePublico | null>
   return data
 }
 
-// Garante uma sessão anônima + registro em clientes_publicos. Se o cliente já
-// existe (retornando de outra visita), não sobrescreve nome/whatsapp — só
-// reaproveita o cadastro.
-export async function garantirClientePublico(empresaId: number, nome: string, whatsapp: string): Promise<string> {
+// Garante uma sessão anônima + registro em clientes_publicos. O cadastro é
+// único pra qualquer loja (pedido do usuário: "o login serve pra todas as
+// lojas") — se já existe (retornando de outra visita, ou trocando de loja),
+// não sobrescreve nome/whatsapp, só reaproveita.
+export async function garantirClientePublico(nome: string, whatsapp: string): Promise<ClientePublico> {
   const {
     data: { session: sessaoAtual },
   } = await supabase.auth.getSession()
@@ -43,14 +43,16 @@ export async function garantirClientePublico(empresaId: number, nome: string, wh
   }
   if (!session) throw new Error('Não foi possível iniciar sua identificação como cliente.')
 
-  const { data: existente } = await supabase.from('clientes_publicos').select('id').eq('id', session.user.id).maybeSingle()
-  if (!existente) {
-    const { error } = await supabase
-      .from('clientes_publicos')
-      .insert({ id: session.user.id, empresa_id: empresaId, nome: nome.trim(), whatsapp: whatsapp.trim() })
-    if (error) throw error
-  }
-  return session.user.id
+  const { data: existente } = await supabase.from('clientes_publicos').select('*').eq('id', session.user.id).maybeSingle()
+  if (existente) return existente
+
+  const nomeFinal = nome.trim()
+  const whatsappFinal = whatsapp.trim()
+  const { error } = await supabase
+    .from('clientes_publicos')
+    .insert({ id: session.user.id, nome: nomeFinal, whatsapp: whatsappFinal })
+  if (error) throw error
+  return { id: session.user.id, nome: nomeFinal, whatsapp: whatsappFinal }
 }
 
 // Adiciona/atualiza um item do carrinho público. Igual ao carrinho interno:
