@@ -38,6 +38,20 @@ export interface Produto {
   custo: number | null
 }
 
+// Subconjunto de Produto exposto pela view publica `produtos_publico` (sem
+// login) — nunca inclui descontoMax nem custo, de proposito.
+export interface ProdutoPublico {
+  id: number
+  empresa_id: number
+  sku: string | null
+  nome: string
+  descricao: string | null
+  quantidade: number
+  valor: number
+  imagens_Path: string[] | null
+  categoria: string | null
+}
+
 export interface CarrinhoItem {
   id: number
   empresa_id: number

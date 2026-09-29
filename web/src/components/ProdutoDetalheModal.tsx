@@ -1,38 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import type { Produto } from '../lib/types'
 import { formatarMoeda } from '../lib/format'
-import { Badge, Button, Modal } from './ui'
-
-// Visualizador em tela cheia de uma imagem do produto — fecha com X ou Esc.
-function LightboxImagem({ src, onClose }: { src: string; onClose: () => void }) {
-  useEffect(() => {
-    function aoTeclar(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', aoTeclar)
-    return () => window.removeEventListener('keydown', aoTeclar)
-  }, [onClose])
-
-  return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-    >
-      <button
-        onClick={onClose}
-        aria-label="Fechar"
-        className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-2xl text-white hover:bg-white/20"
-      >
-        ✕
-      </button>
-      <img src={src} alt="" className="max-h-[90vh] max-w-[90vw] object-contain" onClick={(e) => e.stopPropagation()} />
-    </div>
-  )
-}
+import { Badge, Button, LightboxImagem, Modal } from './ui'
 
 interface Props {
   produto: Produto

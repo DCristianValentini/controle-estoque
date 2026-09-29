@@ -410,6 +410,29 @@ CREATE POLICY imagens_delete_admin ON storage.objects FOR DELETE USING (
       AND papel_na_empresa(NULLIF((storage.foldername(name))[1], 'public')::int) = 'admin')
 );
 
+-- -----------------------------------------------------------------------------
+-- 9. Catalogo publico (sem login) -- visitante pode ver produtos (preco,
+--    imagens, quantidade em estoque) de uma empresa ativa, SEM ver desconto
+--    maximo nem custo, e sem poder escrever nada. A view roda com os
+--    privilegios de quem a criou (dono da tabela, que ignora RLS por
+--    padrao no Postgres/Supabase) -- e assim que da pra expor so ALGUMAS
+--    colunas de uma tabela que continua trancada por RLS pra escrita.
+-- -----------------------------------------------------------------------------
+CREATE VIEW produtos_publico AS
+SELECT p.id, p.empresa_id, p.sku, p.nome, p.descricao, p.quantidade,
+       p.valor, p."imagens_Path", p.categoria
+FROM produtos p
+JOIN empresa e ON e.id = p.empresa_id
+WHERE p.ativo = true AND e.ativo = true;
+
+GRANT SELECT ON produtos_publico TO anon;
+
+-- Visitante precisa listar as empresas ativas pra escolher qual loja ver
+-- (so id/nome/ativo -- nao tem nada sensivel nessa tabela mesmo pra quem
+-- esta logado).
+GRANT SELECT ON empresa TO anon;
+CREATE POLICY empresa_select_publico ON empresa FOR SELECT TO anon USING (ativo = true);
+
 COMMIT;
 
 -- =============================================================================

@@ -4,6 +4,7 @@ import { Layout } from './components/Layout'
 import type { View } from './components/Layout'
 import { Spinner } from './components/ui'
 import { LoginPage } from './pages/LoginPage'
+import { CatalogoPublicoPage } from './pages/CatalogoPublicoPage'
 import { SelecionarEmpresaPage } from './pages/SelecionarEmpresaPage'
 import { CatalogoPage } from './pages/CatalogoPage'
 import { CarrinhoPage } from './pages/CarrinhoPage'
@@ -15,6 +16,7 @@ import { RelatorioPage } from './pages/RelatorioPage'
 function AppShell() {
   const { session, loading, profile, semAcesso, empresaAtiva, modoGerenciarEmpresas, signOut } = useAuth()
   const [view, setView] = useState<View>('catalogo')
+  const [mostrarLogin, setMostrarLogin] = useState(false)
 
   if (loading) {
     return (
@@ -24,7 +26,13 @@ function AppShell() {
     )
   }
 
-  if (!session) return <LoginPage />
+  // Sem sessão: abre no catálogo público (visitante navega sem conta) — o
+  // botão "Entrar" no topo alterna pra tela de login. Pedido explícito do
+  // usuário: quem não tem conta ainda deve conseguir ver preço/imagens/
+  // estoque antes de precisar logar.
+  if (!session) {
+    return mostrarLogin ? <LoginPage /> : <CatalogoPublicoPage onEntrar={() => setMostrarLogin(true)} />
+  }
 
   if (semAcesso || !profile) {
     return (
