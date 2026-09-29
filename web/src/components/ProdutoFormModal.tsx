@@ -188,7 +188,7 @@ export function ProdutoFormModal({ produto, onClose, onSalvo }: Props) {
           <div className="flex flex-wrap gap-2">
             {imagens.map((url) => (
               <div key={url} className="relative h-20 w-20 overflow-hidden rounded-lg border border-slate-200">
-                <img src={url} alt="" className="h-full w-full object-cover" />
+                <img src={url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                 <button
                   type="button"
                   onClick={() => removerImagem(url)}
@@ -262,7 +262,7 @@ function ImagensOrfasModal({ onClose, onEscolher }: { onClose: () => void; onEsc
               onClick={() => onEscolher(img.url)}
               className="aspect-square overflow-hidden rounded-lg border border-slate-200 hover:border-red-400"
             >
-              <img src={img.url} alt="" className="h-full w-full object-cover" />
+              <img src={img.url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
             </button>
           ))}
         </div>

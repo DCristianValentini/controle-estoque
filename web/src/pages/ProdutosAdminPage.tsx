@@ -88,7 +88,7 @@ export function ProdutosAdminPage() {
             <Card key={p.id} className="grid grid-cols-[auto_1fr_auto_auto_auto] items-center gap-3">
               <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-slate-100">
                 {p.imagens_Path?.[0] ? (
-                  <img src={p.imagens_Path[0]} alt="" className="h-full w-full object-cover" />
+                  <img src={p.imagens_Path[0]} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center">📦</div>
                 )}

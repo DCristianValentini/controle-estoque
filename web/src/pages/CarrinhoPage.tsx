@@ -123,7 +123,7 @@ export function CarrinhoPage() {
             <Card key={item.id} className="grid grid-cols-[auto_1fr_auto] items-center gap-3">
               <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-slate-100">
                 {item.produto?.imagens_Path?.[0] ? (
-                  <img src={item.produto.imagens_Path[0]} alt="" className="h-full w-full object-cover" />
+                  <img src={item.produto.imagens_Path[0]} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-xl">📦</div>
                 )}

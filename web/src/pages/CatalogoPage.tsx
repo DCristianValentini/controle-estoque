@@ -86,7 +86,13 @@ export function CatalogoPage() {
               <button className="flex w-full flex-col gap-2 text-left" onClick={() => setProdutoSelecionado(p)}>
                 <div className="aspect-square overflow-hidden rounded-lg bg-slate-100">
                   {p.imagens_Path?.[0] ? (
-                    <img src={p.imagens_Path[0]} alt={p.nome} className="h-full w-full object-cover" />
+                    <img
+                      src={p.imagens_Path[0]}
+                      alt={p.nome}
+                      loading="lazy"
+                      decoding="async"
+                      className="h-full w-full object-cover"
+                    />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center text-3xl">📦</div>
                   )}
