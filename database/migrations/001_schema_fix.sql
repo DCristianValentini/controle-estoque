@@ -223,18 +223,27 @@ END $$;
 
 ALTER TABLE "vendasEfetivadas"
   RENAME COLUMN usuario_id TO usuario_id_legado;
--- a coluna renomeada herda o NOT NULL que fazia sentido pro app antigo (sempre
--- mandava um usuario_id) mas nao faz mais pra vendas novas (confirmar_venda()
--- nao escreve nela, e' so historico) -- sem isso, TODA venda nova falhava.
+-- a coluna renomeada fazia parte da PK original da tabela (composta) -- por
+-- isso nao da so pra tirar o NOT NULL, precisa derrubar essa PK antiga
+-- primeiro (coluna de PK nunca pode ser nula em Postgres). Descobre o nome
+-- da constraint dinamicamente (varia por instalacao) e remove.
+DO $$
+DECLARE pk_antiga TEXT;
+BEGIN
+  SELECT conname INTO pk_antiga FROM pg_constraint
+    WHERE conrelid = '"vendasEfetivadas"'::regclass AND contype = 'p';
+  IF pk_antiga IS NOT NULL THEN
+    EXECUTE format('ALTER TABLE "vendasEfetivadas" DROP CONSTRAINT %I', pk_antiga);
+    RAISE NOTICE 'vendasEfetivadas: PK antiga % removida', pk_antiga;
+  END IF;
+END $$;
+-- agora sim: sem PK nenhuma travando, a coluna pode ficar nula (vendas novas
+-- nao tem "id antigo" nenhum -- confirmar_venda() nao escreve nela).
 ALTER TABLE "vendasEfetivadas" ALTER COLUMN usuario_id_legado DROP NOT NULL;
 ALTER TABLE "vendasEfetivadas"
   ADD COLUMN usuario_id UUID REFERENCES profiles(id),
   ADD COLUMN id BIGINT GENERATED ALWAYS AS IDENTITY;
-DO $$ BEGIN
-  ALTER TABLE "vendasEfetivadas" ADD CONSTRAINT vendas_pkey PRIMARY KEY (id);
-EXCEPTION WHEN invalid_table_definition THEN
-  RAISE NOTICE 'vendasEfetivadas: ja tinha PK em outra coluna, "id" fica so como identity, sem PK formal - ok';
-END $$;
+ALTER TABLE "vendasEfetivadas" ADD CONSTRAINT vendas_pkey PRIMARY KEY (id);
 COMMENT ON COLUMN "vendasEfetivadas".usuario_id_legado IS
   'ID antigo (int) do app FlutterFlow — AMBIGUO para usuario_id=2 (Bianca ou Mario2, ver bug de duplicidade). Mantido só como referência histórica, sem FK.';
 
