@@ -1,23 +1,17 @@
-import { useState } from 'react'
+import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './lib/auth'
-import { Layout } from './components/Layout'
-import type { View } from './components/Layout'
+import { ClientePublicoProvider } from './lib/ClientePublicoContext'
 import { Spinner } from './components/ui'
 import { LoginPage } from './pages/LoginPage'
 import { CatalogoPublicoPage } from './pages/CatalogoPublicoPage'
-import { SelecionarEmpresaPage } from './pages/SelecionarEmpresaPage'
-import { CatalogoPage } from './pages/CatalogoPage'
-import { CarrinhoPage } from './pages/CarrinhoPage'
-import { CarrinhosClientesPage } from './pages/CarrinhosClientesPage'
-import { ProdutosAdminPage } from './pages/ProdutosAdminPage'
-import { UsuariosPage } from './pages/UsuariosPage'
-import { EmpresasPage } from './pages/EmpresasPage'
-import { RelatorioPage } from './pages/RelatorioPage'
+import { MeuCarrinhoPublicoPage } from './pages/MeuCarrinhoPublicoPage'
+import { PainelRoutes } from './PainelRoutes'
 
-function AppShell() {
-  const { session, loading, profile, semAcesso, empresaAtiva, modoGerenciarEmpresas, signOut } = useAuth()
-  const [view, setView] = useState<View>('catalogo')
-  const [mostrarLogin, setMostrarLogin] = useState(false)
+// Rotas com hash (#/...): funciona tanto publicado no GitHub Pages quanto
+// no arquivo único aberto por duplo-clique (file://), sem precisar de
+// nenhuma configuração de servidor pra rotas "profundas".
+function AppRoutes() {
+  const { session, loading } = useAuth()
 
   if (loading) {
     return (
@@ -27,58 +21,59 @@ function AppShell() {
     )
   }
 
-  // Sem sessão (ou sessão anônima de visitante que montou carrinho público):
-  // abre no catálogo público, sem precisar de conta. O botão "Entrar" no
-  // topo alterna pra tela de login normal. `is_anonymous` é o que o
-  // signInAnonymously() do carrinho de cliente cria — nunca deve cair no
-  // fluxo autenticado normal (não tem profile/vínculo com nenhuma empresa).
-  if (!session || session.user.is_anonymous) {
-    return mostrarLogin ? <LoginPage /> : <CatalogoPublicoPage onEntrar={() => setMostrarLogin(true)} />
-  }
-
-  if (semAcesso || !profile) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-slate-50 p-6">
-        <div className="max-w-md rounded-xl border border-amber-200 bg-amber-50 p-6 text-center">
-          <p className="text-amber-800">
-            Seu cadastro foi feito, mas você ainda não tem nenhum acesso liberado. Peça para um administrador te
-            convidar.
-          </p>
-          <button onClick={() => signOut()} className="mt-4 text-sm font-medium text-amber-700 underline">
-            Sair
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  if (!empresaAtiva && !modoGerenciarEmpresas) {
-    return <SelecionarEmpresaPage />
-  }
+  const autenticado = !!session && !session.user.is_anonymous
 
   return (
-    <Layout view={view} onNavigate={setView}>
-      {modoGerenciarEmpresas ? (
-        <EmpresasPage />
-      ) : (
-        <>
-          {view === 'catalogo' && <CatalogoPage />}
-          {view === 'carrinho' && <CarrinhoPage />}
-          {view === 'carrinhosClientes' && <CarrinhosClientesPage />}
-          {view === 'produtos' && <ProdutosAdminPage />}
-          {view === 'usuarios' && <UsuariosPage />}
-          {view === 'relatorio' && <RelatorioPage />}
-          {view === 'empresas' && <EmpresasPage />}
-        </>
-      )}
-    </Layout>
+    <Routes>
+      <Route path="/login" element={autenticado ? <Navigate to="/painel" replace /> : <LoginPage />} />
+      <Route
+        path="/"
+        element={
+          autenticado ? (
+            <Navigate to="/painel" replace />
+          ) : (
+            <ClientePublicoProvider>
+              <CatalogoPublicoPage />
+            </ClientePublicoProvider>
+          )
+        }
+      />
+      <Route
+        path="/loja/:empresaId"
+        element={
+          autenticado ? (
+            <Navigate to="/painel" replace />
+          ) : (
+            <ClientePublicoProvider>
+              <CatalogoPublicoPage />
+            </ClientePublicoProvider>
+          )
+        }
+      />
+      <Route
+        path="/meu-carrinho"
+        element={
+          autenticado ? (
+            <Navigate to="/painel" replace />
+          ) : (
+            <ClientePublicoProvider>
+              <MeuCarrinhoPublicoPage />
+            </ClientePublicoProvider>
+          )
+        }
+      />
+      <Route path="/painel/*" element={autenticado ? <PainelRoutes /> : <Navigate to="/login" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   )
 }
 
 function App() {
   return (
     <AuthProvider>
-      <AppShell />
+      <HashRouter>
+        <AppRoutes />
+      </HashRouter>
     </AuthProvider>
   )
 }

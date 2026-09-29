@@ -1,46 +1,42 @@
 import { useState } from 'react'
-import type { ReactNode } from 'react'
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import logoUrl from '../assets/branding/logo.webp'
 
-export type View = 'catalogo' | 'carrinho' | 'carrinhosClientes' | 'produtos' | 'usuarios' | 'empresas' | 'relatorio'
-
 interface NavItem {
-  id: View
+  path: string
   label: string
   icon: string
 }
 
-interface LayoutProps {
-  view: View
-  onNavigate: (view: View) => void
-  children: ReactNode
-}
-
 // Menu lateral vira drawer (hambúrguer) em telas estreitas — padrão de
-// responsividade obrigatório do dono do projeto.
-export function Layout({ view, onNavigate, children }: LayoutProps) {
+// responsividade obrigatório do dono do projeto. Cada item é uma URL de
+// verdade (/painel/...) — o botão voltar do navegador navega entre as
+// abas normalmente.
+export function Layout() {
   const { profile, empresaAtiva, isAdmin, isSuperAdmin, modoGerenciarEmpresas, vinculos, trocarEmpresa, signOut } =
     useAuth()
   const [drawerAberto, setDrawerAberto] = useState(false)
+  const location = useLocation()
+  const navigate = useNavigate()
 
   const itens: NavItem[] = []
   if (!modoGerenciarEmpresas) {
-    itens.push({ id: 'catalogo', label: 'Catálogo', icon: '🛍️' })
-    itens.push({ id: 'carrinho', label: 'Carrinho', icon: '🛒' })
+    itens.push({ path: '/painel/catalogo', label: 'Catálogo', icon: '🛍️' })
+    itens.push({ path: '/painel/carrinho', label: 'Carrinho', icon: '🛒' })
     // vendedor e admin — pedido explicito do usuario, nao so admin
-    itens.push({ id: 'carrinhosClientes', label: 'Carrinhos de clientes', icon: '💬' })
-    if (isAdmin) itens.push({ id: 'produtos', label: 'Produtos', icon: '📦' })
-    if (isAdmin) itens.push({ id: 'usuarios', label: 'Usuários', icon: '👥' })
-    itens.push({ id: 'relatorio', label: 'Relatório', icon: '📊' })
+    itens.push({ path: '/painel/carrinhos-clientes', label: 'Carrinhos de clientes', icon: '💬' })
+    if (isAdmin) itens.push({ path: '/painel/produtos', label: 'Produtos', icon: '📦' })
+    if (isAdmin) itens.push({ path: '/painel/usuarios', label: 'Usuários', icon: '👥' })
+    itens.push({ path: '/painel/relatorio', label: 'Relatório', icon: '📊' })
   }
-  if (isSuperAdmin) itens.push({ id: 'empresas', label: 'Empresas', icon: '🏢' })
+  if (isSuperAdmin) itens.push({ path: '/painel/empresas', label: 'Empresas', icon: '🏢' })
 
   const podeTrocarEmpresa = vinculos.length > 1 || isSuperAdmin
 
-  function navegar(destino: View) {
-    onNavigate(destino)
-    setDrawerAberto(false)
+  function aoTrocarEmpresa() {
+    trocarEmpresa()
+    navigate('/painel/selecionar-empresa')
   }
 
   return (
@@ -62,16 +58,17 @@ export function Layout({ view, onNavigate, children }: LayoutProps) {
         </div>
         <nav className="flex-1 space-y-1 overflow-y-auto p-3">
           {itens.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => navegar(item.id)}
+            <Link
+              key={item.path}
+              to={item.path}
+              onClick={() => setDrawerAberto(false)}
               className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
-                view === item.id ? 'bg-red-50 text-red-700' : 'text-slate-600 hover:bg-slate-100'
+                location.pathname === item.path ? 'bg-red-50 text-red-700' : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
               <span aria-hidden>{item.icon}</span>
               <span className="min-w-0 truncate">{item.label}</span>
-            </button>
+            </Link>
           ))}
         </nav>
         <div className="border-t border-slate-100 p-3 text-sm">
@@ -102,7 +99,7 @@ export function Layout({ view, onNavigate, children }: LayoutProps) {
             )}
             {podeTrocarEmpresa && (
               <button
-                onClick={trocarEmpresa}
+                onClick={aoTrocarEmpresa}
                 className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-200"
               >
                 Trocar
@@ -111,7 +108,9 @@ export function Layout({ view, onNavigate, children }: LayoutProps) {
           </div>
           <div className="hidden min-w-0 truncate text-sm text-slate-500 sm:block">{profile?.nome}</div>
         </header>
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6">{children}</main>
+        <main className="flex-1 overflow-y-auto p-4 lg:p-6">
+          <Outlet />
+        </main>
       </div>
     </div>
   )

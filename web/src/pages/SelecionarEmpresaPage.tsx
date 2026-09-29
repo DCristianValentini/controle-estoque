@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { Badge, Button, Card } from '../components/ui'
 
@@ -6,6 +7,17 @@ import { Badge, Button, Card } from '../components/ui'
 // escolher qualquer empresa, ou entrar em modo "gerenciar empresas").
 export function SelecionarEmpresaPage() {
   const { vinculos, todasEmpresas, isSuperAdmin, selecionarEmpresa, entrarModoGerenciar, signOut, profile } = useAuth()
+  const navigate = useNavigate()
+
+  function aoSelecionar(empresaId: number) {
+    selecionarEmpresa(empresaId)
+    navigate('/painel/catalogo')
+  }
+
+  function aoGerenciar() {
+    entrarModoGerenciar()
+    navigate('/painel/empresas')
+  }
 
   const lista = isSuperAdmin
     ? todasEmpresas.map((empresa) => ({ empresa, papel: 'super_admin' as const }))
@@ -24,7 +36,7 @@ export function SelecionarEmpresaPage() {
                 <p className="min-w-0 truncate font-medium text-slate-800">{empresa.nome}</p>
                 <Badge tone={papel === 'vendedor' ? 'slate' : 'sky'}>{papel === 'super_admin' ? 'super admin' : papel}</Badge>
               </div>
-              <Button onClick={() => selecionarEmpresa(empresa.id)}>Entrar</Button>
+              <Button onClick={() => aoSelecionar(empresa.id)}>Entrar</Button>
             </Card>
           ))}
           {lista.length === 0 && (
@@ -33,7 +45,7 @@ export function SelecionarEmpresaPage() {
         </div>
 
         {isSuperAdmin && (
-          <button onClick={entrarModoGerenciar} className="mt-6 w-full text-center text-sm text-red-600 hover:underline">
+          <button onClick={aoGerenciar} className="mt-6 w-full text-center text-sm text-red-600 hover:underline">
             Gerenciar empresas (criar nova, etc.)
           </button>
         )}

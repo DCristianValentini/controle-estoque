@@ -1,35 +1,26 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { obterClientePublicoAtual } from '../lib/clientePublico'
-import type { ClientePublico } from '../lib/clientePublico'
+import { useClientePublico } from '../lib/ClientePublicoContext'
 import type { Empresa, ProdutoPublico } from '../lib/types'
 import { formatarMoeda, normalizarBusca } from '../lib/format'
 import { Badge, Card, Input, Select, Spinner } from '../components/ui'
 import { ProdutoPublicoModal } from '../components/ProdutoPublicoModal'
-import { MeuCarrinhoPublicoModal } from '../components/MeuCarrinhoPublicoModal'
-import { IdentificacaoClienteModal } from '../components/IdentificacaoClienteModal'
 import logoUrl from '../assets/branding/logo.webp'
-
-interface Props {
-  onEntrar: () => void
-}
 
 type Ordenacao = 'nome-asc' | 'nome-desc' | 'preco-asc' | 'preco-desc'
 
-// Catálogo visível sem login: visitante escolhe a loja, vê preço/imagens/
-// estoque de cada produto, mas não vê desconto. Pra montar carrinho (e pra
-// só ver o próprio carrinho) precisa se identificar antes (nome+WhatsApp,
-// tela própria "Identifique-se") — pedido explícito do usuário, sem
-// formulário encaixado dentro do produto.
-export function CatalogoPublicoPage({ onEntrar }: Props) {
+// Catálogo visível sem login: /  (escolher loja) e /loja/:empresaId
+// (catálogo daquela loja). Visitante vê preço/imagens/estoque, mas não vê
+// desconto. Pra montar carrinho (e pra ver o próprio carrinho) precisa se
+// identificar antes — tela dedicada "Identifique-se" (ClientePublicoContext),
+// nunca um formulário encaixado dentro do produto.
+export function CatalogoPublicoPage() {
+  const { empresaId: empresaIdParam } = useParams()
+  const navigate = useNavigate()
+  const { clienteAtual, contadorCarrinho, exigirCliente, atualizarContador } = useClientePublico()
   const [empresas, setEmpresas] = useState<Empresa[]>([])
   const [carregandoEmpresas, setCarregandoEmpresas] = useState(true)
-  const [empresaId, setEmpresaId] = useState<number | null>(null)
-  const [mostrarCarrinho, setMostrarCarrinho] = useState(false)
-  const [contadorCarrinho, setContadorCarrinho] = useState(0)
-  const [clienteAtual, setClienteAtual] = useState<ClientePublico | null>(null)
-  const [mostrarIdentificacao, setMostrarIdentificacao] = useState(false)
-  const callbackIdentificacaoRef = useRef<((cliente: ClientePublico) => void) | null>(null)
 
   useEffect(() => {
     supabase
@@ -40,46 +31,14 @@ export function CatalogoPublicoPage({ onEntrar }: Props) {
         setEmpresas(data ?? [])
         setCarregandoEmpresas(false)
       })
-    obterClientePublicoAtual().then(setClienteAtual)
   }, [])
 
-  async function atualizarContador(clienteId: string) {
-    const { count } = await supabase
-      .from('carrinho_publico')
-      .select('id', { count: 'exact', head: true })
-      .eq('cliente_id', clienteId)
-      .eq('status', 'pendente')
-    setContadorCarrinho(count ?? 0)
-  }
-
-  useEffect(() => {
-    if (clienteAtual) atualizarContador(clienteAtual.id)
-  }, [clienteAtual])
-
-  // Usado tanto pelo botão do carrinho quanto pelo "adicionar ao carrinho"
-  // dentro do produto: se já tem cadastro, resolve na hora; senão, abre a
-  // tela de identificação e só resolve quando a pessoa concluir.
-  function exigirCliente(): Promise<ClientePublico> {
-    if (clienteAtual) return Promise.resolve(clienteAtual)
-    return new Promise((resolve) => {
-      callbackIdentificacaoRef.current = resolve
-      setMostrarIdentificacao(true)
-    })
-  }
-
-  function aoIdentificar(cliente: ClientePublico) {
-    setClienteAtual(cliente)
-    setMostrarIdentificacao(false)
-    callbackIdentificacaoRef.current?.(cliente)
-    callbackIdentificacaoRef.current = null
-  }
+  const empresaAtiva = empresas.find((e) => String(e.id) === empresaIdParam) ?? null
 
   async function abrirCarrinho() {
     await exigirCliente()
-    setMostrarCarrinho(true)
+    navigate('/meu-carrinho')
   }
-
-  const empresaAtiva = empresas.find((e) => e.id === empresaId) ?? null
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -90,7 +49,7 @@ export function CatalogoPublicoPage({ onEntrar }: Props) {
             <>
               <span className="min-w-0 truncate font-medium text-slate-800">{empresaAtiva.nome}</span>
               <button
-                onClick={() => setEmpresaId(null)}
+                onClick={() => navigate('/')}
                 className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-200"
               >
                 Trocar loja
@@ -109,7 +68,7 @@ export function CatalogoPublicoPage({ onEntrar }: Props) {
             )}
           </button>
           <button
-            onClick={onEntrar}
+            onClick={() => navigate('/login')}
             className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
           >
             Entrar
@@ -117,39 +76,15 @@ export function CatalogoPublicoPage({ onEntrar }: Props) {
         </div>
       </header>
 
-      {mostrarIdentificacao && (
-        <IdentificacaoClienteModal
-          onCadastrado={aoIdentificar}
-          onClose={() => {
-            setMostrarIdentificacao(false)
-            callbackIdentificacaoRef.current = null
-          }}
-        />
-      )}
-
-      {mostrarCarrinho && clienteAtual && (
-        <MeuCarrinhoPublicoModal
-          clienteId={clienteAtual.id}
-          onClose={() => {
-            setMostrarCarrinho(false)
-            atualizarContador(clienteAtual.id)
-          }}
-        />
-      )}
-
       <main className="p-4 lg:p-6">
         {carregandoEmpresas ? (
           <div className="flex justify-center py-12">
             <Spinner className="h-6 w-6 text-red-600" />
           </div>
         ) : !empresaAtiva ? (
-          <SelecaoLoja empresas={empresas} onEscolher={setEmpresaId} />
+          <SelecaoLoja empresas={empresas} onEscolher={(id) => navigate(`/loja/${id}`)} />
         ) : (
-          <CatalogoDaLoja
-            empresaId={empresaAtiva.id}
-            exigirCliente={exigirCliente}
-            onAdicionadoAoCarrinho={() => clienteAtual && atualizarContador(clienteAtual.id)}
-          />
+          <CatalogoDaLoja empresaId={empresaAtiva.id} exigirCliente={exigirCliente} onAdicionadoAoCarrinho={atualizarContador} />
         )}
       </main>
     </div>
@@ -192,7 +127,7 @@ function CatalogoDaLoja({
   onAdicionadoAoCarrinho,
 }: {
   empresaId: number
-  exigirCliente: () => Promise<ClientePublico>
+  exigirCliente: ReturnType<typeof useClientePublico>['exigirCliente']
   onAdicionadoAoCarrinho: () => void
 }) {
   const [produtos, setProdutos] = useState<ProdutoPublico[]>([])
@@ -303,7 +238,10 @@ function CatalogoDaLoja({
         <ProdutoPublicoModal
           produto={produtoSelecionado}
           onClose={() => setProdutoSelecionado(null)}
-          onAdicionado={onAdicionadoAoCarrinho}
+          onAdicionado={() => {
+            setProdutoSelecionado(null)
+            onAdicionadoAoCarrinho()
+          }}
           exigirCliente={exigirCliente}
         />
       )}
