@@ -223,6 +223,10 @@ END $$;
 
 ALTER TABLE "vendasEfetivadas"
   RENAME COLUMN usuario_id TO usuario_id_legado;
+-- a coluna renomeada herda o NOT NULL que fazia sentido pro app antigo (sempre
+-- mandava um usuario_id) mas nao faz mais pra vendas novas (confirmar_venda()
+-- nao escreve nela, e' so historico) -- sem isso, TODA venda nova falhava.
+ALTER TABLE "vendasEfetivadas" ALTER COLUMN usuario_id_legado DROP NOT NULL;
 ALTER TABLE "vendasEfetivadas"
   ADD COLUMN usuario_id UUID REFERENCES profiles(id),
   ADD COLUMN id BIGINT GENERATED ALWAYS AS IDENTITY;
