@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { sessaoClientePublicoAtual } from '../lib/clientePublico'
 import type { Empresa, ProdutoPublico } from '../lib/types'
 import { formatarMoeda, normalizarBusca } from '../lib/format'
 import { Badge, Card, Input, Select, Spinner } from '../components/ui'
 import { ProdutoPublicoModal } from '../components/ProdutoPublicoModal'
+import { MeuCarrinhoPublicoModal } from '../components/MeuCarrinhoPublicoModal'
 import logoUrl from '../assets/branding/logo.webp'
 
 interface Props {
@@ -17,6 +19,8 @@ export function CatalogoPublicoPage({ onEntrar }: Props) {
   const [empresas, setEmpresas] = useState<Empresa[]>([])
   const [carregandoEmpresas, setCarregandoEmpresas] = useState(true)
   const [empresaId, setEmpresaId] = useState<number | null>(null)
+  const [mostrarCarrinho, setMostrarCarrinho] = useState(false)
+  const [contadorCarrinho, setContadorCarrinho] = useState(0)
 
   useEffect(() => {
     supabase
@@ -27,6 +31,21 @@ export function CatalogoPublicoPage({ onEntrar }: Props) {
         setEmpresas(data ?? [])
         setCarregandoEmpresas(false)
       })
+  }, [])
+
+  async function atualizarContador() {
+    const clienteId = await sessaoClientePublicoAtual()
+    if (!clienteId) return
+    const { count } = await supabase
+      .from('carrinho_publico')
+      .select('id', { count: 'exact', head: true })
+      .eq('cliente_id', clienteId)
+      .eq('status', 'pendente')
+    setContadorCarrinho(count ?? 0)
+  }
+
+  useEffect(() => {
+    atualizarContador()
   }, [])
 
   const empresaAtiva = empresas.find((e) => e.id === empresaId) ?? null
@@ -48,13 +67,36 @@ export function CatalogoPublicoPage({ onEntrar }: Props) {
             </>
           )}
         </div>
-        <button
-          onClick={onEntrar}
-          className="shrink-0 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
-        >
-          Entrar
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            onClick={() => setMostrarCarrinho(true)}
+            className="relative rounded-lg p-2 text-slate-600 hover:bg-slate-100"
+            aria-label="Meu carrinho"
+          >
+            🛒
+            {contadorCarrinho > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-xs font-semibold text-white">
+                {contadorCarrinho}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={onEntrar}
+            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+          >
+            Entrar
+          </button>
+        </div>
       </header>
+
+      {mostrarCarrinho && (
+        <MeuCarrinhoPublicoModal
+          onClose={() => {
+            setMostrarCarrinho(false)
+            atualizarContador()
+          }}
+        />
+      )}
 
       <main className="p-4 lg:p-6">
         {carregandoEmpresas ? (
@@ -64,7 +106,7 @@ export function CatalogoPublicoPage({ onEntrar }: Props) {
         ) : !empresaAtiva ? (
           <SelecaoLoja empresas={empresas} onEscolher={setEmpresaId} />
         ) : (
-          <CatalogoDaLoja empresaId={empresaAtiva.id} />
+          <CatalogoDaLoja empresaId={empresaAtiva.id} onAdicionadoAoCarrinho={atualizarContador} />
         )}
       </main>
     </div>
@@ -94,7 +136,13 @@ function SelecaoLoja({ empresas, onEscolher }: { empresas: Empresa[]; onEscolher
   )
 }
 
-function CatalogoDaLoja({ empresaId }: { empresaId: number }) {
+function CatalogoDaLoja({
+  empresaId,
+  onAdicionadoAoCarrinho,
+}: {
+  empresaId: number
+  onAdicionadoAoCarrinho: () => void
+}) {
   const [produtos, setProdutos] = useState<ProdutoPublico[]>([])
   const [carregando, setCarregando] = useState(true)
   const [busca, setBusca] = useState('')
@@ -181,7 +229,13 @@ function CatalogoDaLoja({ empresaId }: { empresaId: number }) {
         </div>
       )}
 
-      {produtoSelecionado && <ProdutoPublicoModal produto={produtoSelecionado} onClose={() => setProdutoSelecionado(null)} />}
+      {produtoSelecionado && (
+        <ProdutoPublicoModal
+          produto={produtoSelecionado}
+          onClose={() => setProdutoSelecionado(null)}
+          onAdicionado={onAdicionadoAoCarrinho}
+        />
+      )}
     </div>
   )
 }

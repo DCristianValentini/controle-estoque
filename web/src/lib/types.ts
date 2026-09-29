@@ -74,6 +74,19 @@ export interface VendaEfetivada {
   nomeCli: string
 }
 
+export interface CarrinhoPublicoItem {
+  id: number
+  cliente_id: string
+  empresa_id: number
+  produto_id: number
+  quantidade: number
+  valor_original: number
+  valor_acertado: number | null
+  perc_desc: number
+  status: 'pendente' | 'confirmado'
+  atualizado_em: string
+}
+
 export interface Convite {
   id: string
   login: string

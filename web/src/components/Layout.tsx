@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { useAuth } from '../lib/auth'
 import logoUrl from '../assets/branding/logo.webp'
 
-export type View = 'catalogo' | 'carrinho' | 'produtos' | 'usuarios' | 'empresas' | 'relatorio'
+export type View = 'catalogo' | 'carrinho' | 'carrinhosClientes' | 'produtos' | 'usuarios' | 'empresas' | 'relatorio'
 
 interface NavItem {
   id: View
@@ -28,6 +28,8 @@ export function Layout({ view, onNavigate, children }: LayoutProps) {
   if (!modoGerenciarEmpresas) {
     itens.push({ id: 'catalogo', label: 'Catálogo', icon: '🛍️' })
     itens.push({ id: 'carrinho', label: 'Carrinho', icon: '🛒' })
+    // vendedor e admin — pedido explicito do usuario, nao so admin
+    itens.push({ id: 'carrinhosClientes', label: 'Carrinhos de clientes', icon: '💬' })
     if (isAdmin) itens.push({ id: 'produtos', label: 'Produtos', icon: '📦' })
     if (isAdmin) itens.push({ id: 'usuarios', label: 'Usuários', icon: '👥' })
     itens.push({ id: 'relatorio', label: 'Relatório', icon: '📊' })

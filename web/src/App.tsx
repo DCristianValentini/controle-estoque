@@ -8,6 +8,7 @@ import { CatalogoPublicoPage } from './pages/CatalogoPublicoPage'
 import { SelecionarEmpresaPage } from './pages/SelecionarEmpresaPage'
 import { CatalogoPage } from './pages/CatalogoPage'
 import { CarrinhoPage } from './pages/CarrinhoPage'
+import { CarrinhosClientesPage } from './pages/CarrinhosClientesPage'
 import { ProdutosAdminPage } from './pages/ProdutosAdminPage'
 import { UsuariosPage } from './pages/UsuariosPage'
 import { EmpresasPage } from './pages/EmpresasPage'
@@ -26,11 +27,12 @@ function AppShell() {
     )
   }
 
-  // Sem sessão: abre no catálogo público (visitante navega sem conta) — o
-  // botão "Entrar" no topo alterna pra tela de login. Pedido explícito do
-  // usuário: quem não tem conta ainda deve conseguir ver preço/imagens/
-  // estoque antes de precisar logar.
-  if (!session) {
+  // Sem sessão (ou sessão anônima de visitante que montou carrinho público):
+  // abre no catálogo público, sem precisar de conta. O botão "Entrar" no
+  // topo alterna pra tela de login normal. `is_anonymous` é o que o
+  // signInAnonymously() do carrinho de cliente cria — nunca deve cair no
+  // fluxo autenticado normal (não tem profile/vínculo com nenhuma empresa).
+  if (!session || session.user.is_anonymous) {
     return mostrarLogin ? <LoginPage /> : <CatalogoPublicoPage onEntrar={() => setMostrarLogin(true)} />
   }
 
@@ -62,6 +64,7 @@ function AppShell() {
         <>
           {view === 'catalogo' && <CatalogoPage />}
           {view === 'carrinho' && <CarrinhoPage />}
+          {view === 'carrinhosClientes' && <CarrinhosClientesPage />}
           {view === 'produtos' && <ProdutosAdminPage />}
           {view === 'usuarios' && <UsuariosPage />}
           {view === 'relatorio' && <RelatorioPage />}
