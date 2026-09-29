@@ -18,7 +18,7 @@ type Ordenacao = 'nome-asc' | 'nome-desc' | 'preco-asc' | 'preco-desc'
 export function CatalogoPublicoPage() {
   const { empresaId: empresaIdParam } = useParams()
   const navigate = useNavigate()
-  const { clienteAtual, contadorCarrinho, exigirCliente, atualizarContador } = useClientePublico()
+  const { clienteAtual, contadorCarrinho, exigirCliente, atualizarContador, sairComoCliente } = useClientePublico()
   const [empresas, setEmpresas] = useState<Empresa[]>([])
   const [carregandoEmpresas, setCarregandoEmpresas] = useState(true)
 
@@ -58,7 +58,21 @@ export function CatalogoPublicoPage() {
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {clienteAtual && <span className="hidden text-sm text-slate-500 sm:inline">Olá, {clienteAtual.nome}</span>}
+          {clienteAtual && (
+            <span className="hidden items-center gap-2 text-sm text-slate-500 sm:flex">
+              Olá, {clienteAtual.nome}
+              <button
+                onClick={() => {
+                  if (confirm('Sair do seu cadastro? Na próxima vez vai precisar se identificar de novo.')) {
+                    sairComoCliente()
+                  }
+                }}
+                className="text-red-600 hover:underline"
+              >
+                Sair
+              </button>
+            </span>
+          )}
           <button onClick={abrirCarrinho} className="relative rounded-lg p-2 text-slate-600 hover:bg-slate-100" aria-label="Meu carrinho">
             🛒
             {contadorCarrinho > 0 && (

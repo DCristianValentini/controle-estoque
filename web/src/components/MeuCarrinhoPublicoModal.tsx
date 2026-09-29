@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { useClientePublico } from '../lib/ClientePublicoContext'
 import type { CarrinhoPublicoItem, ProdutoPublico } from '../lib/types'
 import { formatarMoeda } from '../lib/format'
 import { Badge, Button, Card, Modal, Spinner } from './ui'
@@ -18,9 +19,16 @@ interface Props {
 // — quando o vendedor definir um desconto pelo WhatsApp, o valor aparece
 // aqui sozinho, sem precisar recarregar a página.
 export function MeuCarrinhoPublicoModal({ clienteId, onClose }: Props) {
+  const { sairComoCliente } = useClientePublico()
   const [itens, setItens] = useState<ItemComProduto[]>([])
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
+
+  async function sair() {
+    if (!confirm('Sair do seu cadastro? Na próxima vez vai precisar se identificar de novo.')) return
+    await sairComoCliente()
+    onClose()
+  }
 
   async function carregar() {
     const { data } = await supabase
@@ -73,7 +81,12 @@ export function MeuCarrinhoPublicoModal({ clienteId, onClose }: Props) {
           <Spinner className="h-6 w-6 text-red-600" />
         </div>
       ) : itens.length === 0 ? (
-        <p className="py-8 text-center text-sm text-slate-500">Seu carrinho está vazio.</p>
+        <div className="space-y-4">
+          <p className="py-8 text-center text-sm text-slate-500">Seu carrinho está vazio.</p>
+          <button onClick={sair} className="block w-full text-center text-xs text-slate-400 hover:underline">
+            Sair do meu cadastro
+          </button>
+        </div>
       ) : (
         <div className="space-y-3">
           {itens.map((item) => {
@@ -142,6 +155,9 @@ export function MeuCarrinhoPublicoModal({ clienteId, onClose }: Props) {
           <Button full variant="secondary" onClick={onClose}>
             Continuar comprando
           </Button>
+          <button onClick={sair} className="block w-full text-center text-xs text-slate-400 hover:underline">
+            Sair do meu cadastro
+          </button>
         </div>
       )}
     </Modal>
