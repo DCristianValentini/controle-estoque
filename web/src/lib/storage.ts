@@ -30,7 +30,9 @@ export interface ImagemOrfa {
 // enxerga, então a query "select imagens_Path" sem filtro de empresa é
 // segura aqui.
 export async function listarImagensOrfas(): Promise<ImagemOrfa[]> {
-  const { data: arquivos, error } = await supabase.storage.from(BUCKET).list('public', { limit: 1000 })
+  const { data: arquivos, error } = await supabase.storage
+    .from(BUCKET)
+    .list('public', { limit: 1000, sortBy: { column: 'created_at', order: 'desc' } })
   if (error) throw error
 
   const { data: produtos, error: erroProdutos } = await supabase.from('produtos').select('imagens_Path')
